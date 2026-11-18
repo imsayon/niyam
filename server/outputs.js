@@ -198,7 +198,7 @@ export function outputApi(app, db) {
     }[kind];
     const schema = {
       type: "ARRAY",
-      maxItems: 200,
+      // Gemini expands bounded arrays into expensive decoding states. Validate the row limit after parsing.
       items: {
         type: "OBJECT",
         properties: Object.fromEntries(
