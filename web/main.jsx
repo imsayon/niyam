@@ -334,6 +334,16 @@ function App() {
         </p>
         <AccountLink notify={notify} />
         <button
+          className="button"
+          onClick={() =>
+            api("/session")
+              .then(setSession)
+              .catch((error) => notify(error.message, true))
+          }
+        >
+          Check approval status
+        </button>
+        <button
           onClick={async () => {
             await api("/session", { method: "DELETE" });
             setSession({ account: null, registration: session.registration });
