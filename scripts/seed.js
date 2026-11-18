@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, chmod } from "node:fs/promises";
 import { randomBytes, randomUUID } from "node:crypto";
 import { database, setup, transaction } from "../server/store.js";
 import { hashPassword } from "../server/accounts.js";
@@ -61,6 +61,7 @@ if (process.argv[1]?.endsWith("/scripts/seed.js")) {
       envFile + "\nAI_ENCRYPTION_KEY=" + randomBytes(32).toString("hex") + "\n",
       { mode: 0o600 },
     );
+  await chmod(".env", 0o600);
   const db = database();
   try {
     await setup(db);

@@ -12,7 +12,7 @@ const safe = (cell) =>
     .replaceAll('"', '""') +
   '"';
 
-async function gemini(db, text, system, schema, config) {
+export async function gemini(db, text, system, schema, config) {
   const { key, model: geminiModel } = config || (await aiConfiguration(db));
   if (!key)
     throw new HttpError(
@@ -23,28 +23,37 @@ async function gemini(db, text, system, schema, config) {
     throw new HttpError(503, "The Gemini model setting is invalid.");
   let result;
   try {
-    result = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/" +
-        geminiModel +
-        ":generateContent",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-goog-api-key": key },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: system }] },
-          contents: [{ role: "user", parts: [{ text }] }],
-          ...(schema
-            ? {
-                generationConfig: {
-                  responseMimeType: "application/json",
-                  responseSchema: schema,
-                },
-              }
-            : {}),
-        }),
-        signal: AbortSignal.timeout(45000),
-      },
-    );
+    for (let attempt = 0; attempt < 3; attempt++) {
+      result = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/" +
+          geminiModel +
+          ":generateContent",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-goog-api-key": key,
+          },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: system }] },
+            contents: [{ role: "user", parts: [{ text }] }],
+            generationConfig: {
+              maxOutputTokens: schema ? 12000 : 2048,
+              ...(schema
+                ? {
+                    responseMimeType: "application/json",
+                    responseSchema: schema,
+                  }
+                : {}),
+            },
+          }),
+          signal: AbortSignal.timeout(45000),
+        },
+      );
+      if (![429, 503].includes(result.status) || attempt === 2) break;
+      await result.body?.cancel();
+      await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+    }
   } catch (error) {
     console.warn(
       "Gemini connection failed",
