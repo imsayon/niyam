@@ -591,15 +591,19 @@ export function workspaceApi(app, db) {
             published: "completed",
             completed: "archived",
           };
-          if (allowed[event.status] !== body.to)
+          const withdrawing =
+            event.status === "published" && body.to === "configured";
+          if (!withdrawing && allowed[event.status] !== body.to)
             fail("This lifecycle transition is unavailable.", 409);
           if (
             body.to === "configured" &&
+            !withdrawing &&
             !data.sittings.some(
               (s) => s.eventId === key && s.status === "scheduled",
             )
           )
             fail("Add a scheduled sitting first.");
+          if (withdrawing) event.publishedRunId = null;
           event.status = body.to;
         },
       ),

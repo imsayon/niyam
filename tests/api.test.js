@@ -206,6 +206,19 @@ test(
         ).status,
         503,
       );
+      const latest = (await request("/workspace", undefined, cookies.admin))
+        .data;
+      const withdrawn = await request(
+        "/events/demo-event/transition",
+        { revision: latest.revision, to: "configured" },
+        cookies.admin,
+      );
+      assert.equal(withdrawn.status, 200);
+      assert.equal(
+        (await request("/workspace", undefined, cookies.student)).data.data
+          .schedules.length,
+        0,
+      );
     } finally {
       if (server) await new Promise((resolve) => server.close(resolve));
       await isolated.end();

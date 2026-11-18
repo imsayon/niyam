@@ -930,15 +930,27 @@ function AccountLink({ notify }) {
   );
 }
 function Overview({ data, sessions, event, run, go, setModal }) {
-  const count = sessions.reduce(
+  const scheduled = sessions.filter(
+    (sitting) => sitting.status === "scheduled",
+  );
+  const count = scheduled.reduce(
     (total, sitting) =>
       total + data.enrollments.filter((e) => e.sittingId === sitting.id).length,
     0,
   );
   const used =
     run?.sessions.reduce((total, s) => total + s.seats.length, 0) || 0;
-  const capacity = data.rooms.reduce(
-    (total, room) => total + room.cells.filter((cell) => !cell.blocked).length,
+  const capacity = scheduled.reduce(
+    (total, sitting) =>
+      total +
+      sitting.roomIds.reduce(
+        (seats, id) =>
+          seats +
+          (data.rooms
+            .find((room) => room.id === id)
+            ?.cells.filter((cell) => !cell.blocked).length || 0),
+        0,
+      ),
     0,
   );
   return (
@@ -1104,13 +1116,13 @@ function Overview({ data, sessions, event, run, go, setModal }) {
             <div className="capacity-key">
               <span>
                 <i className="yellow-dot" />
-                {capacity} active seats
+                {capacity} available seats
               </span>
               <span>
                 <i className="blue-dot" />
                 {count} enrollments
               </span>
-              <small>Room inventory across the workspace</small>
+              <small>Across scheduled sittings</small>
             </div>
           </div>
           <button className="text-link" onClick={() => go("rooms")}>
@@ -1159,6 +1171,29 @@ function Events({
                 <Pencil size={14} />
                 Edit
               </button>
+              {event.status === "published" && (
+                <button
+                  className="button small"
+                  disabled={busy}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        "Withdraw the current plan from student and faculty views?",
+                      )
+                    )
+                      act(
+                        () =>
+                          send("/events/" + eventId + "/transition", {
+                            revision,
+                            to: "configured",
+                          }),
+                        "Published plan withdrawn",
+                      );
+                  }}
+                >
+                  Withdraw plan
+                </button>
+              )}
               {["draft", "published", "completed"].includes(event.status) && (
                 <button
                   className="button small"
@@ -3142,7 +3177,7 @@ function SettingsPage({
                 <Field label="Model">
                   <input
                     name="model"
-                    defaultValue="gemini-3.8-flash"
+                    defaultValue="gemini-3.1-flash-lite"
                     required
                   />
                 </Field>

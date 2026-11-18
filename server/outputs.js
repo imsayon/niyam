@@ -42,10 +42,15 @@ async function gemini(db, text, system, schema, config) {
               }
             : {}),
         }),
-        signal: AbortSignal.timeout(18000),
+        signal: AbortSignal.timeout(45000),
       },
     );
-  } catch {
+  } catch (error) {
+    console.warn(
+      "Gemini connection failed",
+      error.name,
+      error.cause?.code || "",
+    );
     throw new HttpError(502, "Gemini timed out or could not be reached.");
   }
   if (!result.ok)
