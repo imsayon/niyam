@@ -11,6 +11,7 @@ test(
   { skip: !process.env.TEST_DATABASE_URL },
   async () => {
     const messages = [];
+    const decoded = message => message.replace(/=\n/g, "").replace(/=([0-9a-f]{2})/gi, (_,hex) => String.fromCharCode(parseInt(hex,16)));
     const smtp = net.createServer((socket) => {
       let buffer = "",
         content = "",
@@ -89,7 +90,7 @@ test(
       });
       assert.equal(result.status, 200);
       assert.equal(messages.length, 1);
-      const verification = messages[0].match(/#verify=([\w-]+)/)?.[1];
+      const verification = decoded(messages[0]).match(/#verify=([\w-]+)/)?.[1];
       assert.ok(verification);
       const member = await call("/session", {
         email: "new@example.test",
@@ -148,7 +149,7 @@ test(
         (await call("/recovery", { email: "new@example.test" })).status,
         200,
       );
-      const reset = messages.at(-1).match(/#reset=([\w-]+)/)?.[1];
+      const reset = decoded(messages.at(-1)).match(/#reset=([\w-]+)/)?.[1];
       assert.ok(reset);
       const next = randomBytes(18).toString("hex");
       assert.equal(
