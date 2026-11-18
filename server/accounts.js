@@ -271,6 +271,14 @@ export function accountApi(app, db, origin) {
           [record.account_id],
         );
       }
+      await audit(
+        client,
+        record.account_id,
+        body.purpose === "reset"
+          ? "account.password_reset"
+          : "account.email_verified",
+        record.account_id,
+      );
     });
     res.json({ ok: true });
   });
