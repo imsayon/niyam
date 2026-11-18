@@ -1092,6 +1092,15 @@ function Events({
           {event && (
             <div className="button-row">
               <Badge>{event.status}</Badge>
+              {event.status === "draft" && (
+                <button
+                  className="icon"
+                  aria-label="Delete examination"
+                  onClick={() => drop("events", event)}
+                >
+                  <Trash2 size={15} />
+                </button>
+              )}
               <button
                 className="button small"
                 onClick={() => setModal({ type: "event", row: event })}
@@ -2604,7 +2613,10 @@ function Imports({ data, eventId, sessions, revision, act, notify, busy }) {
             extraction.
           </p>
         </div>
-        <FileUp size={23} />
+        <a className="text-link" href={"/templates/" + kind + ".csv"} download>
+          <Download size={15} />
+          Download CSV template
+        </a>
       </div>
       <div className="import-body">
         <div className="form-grid">

@@ -23,11 +23,11 @@
     "productName": "Niyam",
     "artifactName": "Niyam-${version}-${arch}.${ext}",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "app": "desktop"
     },
     "files": [
-      "desktop/**",
-      "!node_modules/**/*"
+      "**/*"
     ],
     "win": {
       "target": "nsis",

@@ -1,0 +1,8 @@
+{
+  "name": "niyam-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Niyam examination workspace",
+  "author": "Sayon",
+  "main": "main.cjs"
+}
