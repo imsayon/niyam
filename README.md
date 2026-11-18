@@ -31,7 +31,7 @@ For frontend development, run `npm run dev` in a second terminal. Set `DEV_ORIGI
 - Duty allocation with faculty availability, approved leave and buffers, overlap checks, per-event duty caps, workload ranking, and room repetition preferences. Search uses bounded backtracking and reports infeasible or exhausted searches explicitly. It does not certify globally optimal fairness.
 - CSV/XLS/XLSX parsing, text PDF extraction, Gemini entity extraction, editable review, validation, duplicate detection, and atomic imports of up to 250 rows. PDF extraction is limited to 30 pages and 25,000 characters. Scanned PDFs require OCR before import.
 - Actual CSV/PDF timetable, seat, and duty downloads. Role restrictions apply to exports.
-- Server-side Gemini chat over authorized records, encrypted BYOK configuration and connection testing, and explicit provider error states. Add your key in Settings. AI chat has read-only access. It does not commit operational changes.
+- Server-side Gemini chat over authorized records, encrypted BYOK configuration and connection testing, and explicit provider error states. Add your key in Settings. The default is [Gemini 3.8 Flash](https://aistudio.google.com/docs/models/gemini-3.8-flash). AI chat has read-only access. It does not commit operational changes.
 - Light and Dark appearance, responsive role portals, a keyboard-accessible room editor, and a tabular seating view.
 
 ## Architecture

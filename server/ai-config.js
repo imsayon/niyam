@@ -8,7 +8,7 @@ export async function aiConfiguration(db) {
   if (!row)
     return {
       key: process.env.GEMINI_API_KEY,
-      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+      model: process.env.GEMINI_MODEL || "gemini-3.8-flash",
     };
   const key = encryptionKey();
   const { iv, tag, encrypted, model } = row.value;

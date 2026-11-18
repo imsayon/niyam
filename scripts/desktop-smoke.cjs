@@ -21,7 +21,17 @@ const fs = require("node:fs/promises");
     await expect(
       window.getByRole("heading", { name: "Data Structures" }),
     ).toBeVisible();
-    await expect(window.getByText("A-101", { exact: true })).toBeVisible();
+    const state = await window.evaluate(async () =>
+      (await fetch("/api/workspace")).json(),
+    );
+    const seat = state.data.schedules[0]?.seat;
+    if (!seat || seat.studentId !== "student-1" || seat.paper.code !== "CS301")
+      throw Error(
+        "The published assignment belongs to another candidate or paper.",
+      );
+    await expect(
+      window.getByText(seat.roomName, { exact: true }),
+    ).toBeVisible();
     await window.reload();
     await expect(
       window.getByRole("heading", { name: "Data Structures" }),

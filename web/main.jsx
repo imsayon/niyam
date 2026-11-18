@@ -49,6 +49,8 @@ async function api(path, options = {}) {
   const result = await res
     .json()
     .catch(() => ({ error: "The server returned an unreadable response." }));
+  if (res.status === 401)
+    window.dispatchEvent(new Event("niyam-session-expired"));
   if (!res.ok) {
     const detail = Array.isArray(result.details)
       ? result.details
@@ -191,12 +193,17 @@ function App() {
     [loading, setLoading] = useState(true),
     [data, setData] = useState(empty),
     [revision, setRevision] = useState(0);
+  const [readyFor, setReadyFor] = useState(null);
+  const currentAccount = useRef(null);
+  currentAccount.current = session?.account?.id;
   const [page, setPage] = useState("overview"),
     [eventId, setEventId] = useState(""),
-    [modal, setModal] = useState(null),
+    [modal, setModalState] = useState(null),
     [notice, setNotice] = useState(null),
     [busy, setBusy] = useState(false),
     [mobile, setMobile] = useState(false);
+  const setModal = (value) =>
+    setModalState(value ? { ...value, revision } : null);
   const [theme, setTheme] = useState(() =>
     localStorage.getItem("niyam-theme") === "dark" ? "dark" : "light",
   );
@@ -216,10 +223,14 @@ function App() {
     return () => clearTimeout(timer);
   }, [notice]);
   const refresh = useCallback(async () => {
+    const requestedFor = currentAccount.current;
     const row = await api("/workspace");
-    setData(row.data);
-    setRevision(row.revision);
-    setConnected(true);
+    if (requestedFor === currentAccount.current) {
+      setData(row.data);
+      setRevision(row.revision);
+      setConnected(true);
+      setReadyFor(requestedFor);
+    }
     return row;
   }, []);
   useEffect(() => {
@@ -245,6 +256,19 @@ function App() {
     if (!eventId || !data.events?.some((event) => event.id === eventId))
       setEventId(data.events?.[0]?.id || "");
   }, [data.events, eventId]);
+  useEffect(() => {
+    setPage("overview");
+    setModalState(null);
+  }, [session?.account?.id]);
+  useEffect(() => {
+    const expired = () => {
+      setSession((old) => ({ ...old, account: null }));
+      setReadyFor(null);
+      setData(empty);
+    };
+    window.addEventListener("niyam-session-expired", expired);
+    return () => window.removeEventListener("niyam-session-expired", expired);
+  }, []);
   const account = session?.account;
   async function act(task, success) {
     setBusy(true);
@@ -265,7 +289,7 @@ function App() {
       () =>
         send(
           "/records/" + kind + (id ? "/" + id : ""),
-          { revision, record },
+          { revision: modal?.revision ?? revision, record },
           id ? "PATCH" : "POST",
         ),
       "Record saved",
@@ -317,6 +341,22 @@ function App() {
         >
           Sign out
         </button>
+      </div>
+    );
+  if (readyFor !== account.id)
+    return (
+      <div className="splash">
+        <img src="/mark.svg" alt="" />
+        <p>Loading your examination workspace…</p>
+        <button
+          className="button"
+          onClick={() =>
+            refresh().catch((error) => notify(error.message, true))
+          }
+        >
+          Retry connection
+        </button>
+        {notice && <Toast notice={notice} close={() => setNotice(null)} />}
       </div>
     );
   const event = data.events?.find((event) => event.id === eventId);
@@ -447,6 +487,7 @@ function App() {
                 await api("/session", { method: "DELETE" });
                 setSession({ ...session, account: null });
                 setData(empty);
+                setReadyFor(null);
               }}
             >
               <LogOut size={18} />
@@ -604,7 +645,7 @@ function App() {
                     () =>
                       send(
                         "/records/" + modal.kind + "/" + modal.row.id,
-                        { revision },
+                        { revision: modal.revision },
                         "DELETE",
                       ),
                     "Record deleted",
@@ -1437,7 +1478,9 @@ function SittingForm({ data, eventId, row, save, busy }) {
                             [key]:
                               key === "semester"
                                 ? Number(e.target.value)
-                                : e.target.value.toUpperCase(),
+                                : key === "name"
+                                  ? e.target.value
+                                  : e.target.value.toUpperCase(),
                           }
                         : p,
                     ),
@@ -2541,6 +2584,7 @@ function Imports({ data, eventId, sessions, revision, act, notify, busy }) {
     sittingId: sittingId || sessions[0]?.id,
     roomId: roomId || data.rooms[0]?.id,
   };
+  useEffect(() => setPreview(null), [eventId, sittingId, roomId]);
   async function fileChanged(file) {
     if (!file) return;
     if (file.size > 10 * 1024 * 1024)
@@ -2736,7 +2780,7 @@ function Imports({ data, eventId, sessions, revision, act, notify, busy }) {
                   const result = await act(() =>
                     send("/import/preview", { ...body, rows: changed }),
                   );
-                  if (result) setPreview(result);
+                  if (result) setPreview({ ...result, revision });
                 } catch (error) {
                   notify(error.message, true);
                 }
@@ -2778,7 +2822,11 @@ function Imports({ data, eventId, sessions, revision, act, notify, busy }) {
               }
               onClick={async () => {
                 const result = await act(
-                  () => send("/import/commit", body),
+                  () =>
+                    send("/import/commit", {
+                      ...body,
+                      revision: preview.revision,
+                    }),
                   "Import committed",
                 );
                 if (result) {
@@ -3084,7 +3132,7 @@ function SettingsPage({
                 <Field label="Model">
                   <input
                     name="model"
-                    defaultValue="gemini-2.5-flash"
+                    defaultValue="gemini-3.8-flash"
                     required
                   />
                 </Field>
