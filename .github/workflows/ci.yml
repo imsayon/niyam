@@ -42,6 +42,24 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run desktop:win -- --publish never
+      - name: Install and verify Windows client
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          NIYAM_STUDENT_PASSWORD: ${{ secrets.NIYAM_STUDENT_PASSWORD }}
+        run: |
+          $installer = (Get-ChildItem release/*.exe | Select-Object -First 1).FullName
+          Start-Process -FilePath $installer -ArgumentList '/S' -Wait
+          $installed = Get-ChildItem "$env:LOCALAPPDATA/Programs" -Filter Niyam.exe -Recurse | Select-Object -First 1
+          if (-not $installed) { throw 'Installer did not create Niyam.exe' }
+          $env:NIYAM_DESKTOP_PATH = $installed.FullName
+          node scripts/desktop-smoke.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Windows-verification
+          path: local/desktop-evidence/
       - uses: actions/upload-artifact@v4
         with:
           name: Niyam-Windows-x64

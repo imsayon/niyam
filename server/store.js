@@ -1,8 +1,13 @@
-import pg from 'pg';
+import pg from "pg";
 
 export function database(url = process.env.DATABASE_URL) {
-  if (!url) throw new Error('DATABASE_URL is required');
-  return new pg.Pool({connectionString: url, max: 5, connectionTimeoutMillis: 10000, idleTimeoutMillis: 15000});
+  if (!url) throw new Error("DATABASE_URL is required");
+  return new pg.Pool({
+    connectionString: url,
+    max: 5,
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 15000,
+  });
 }
 
 export async function setup(db) {
@@ -57,12 +62,12 @@ export class HttpError extends Error {
 export async function transaction(db, work) {
   const client = await db.connect();
   try {
-    await client.query('BEGIN');
+    await client.query("BEGIN");
     const result = await work(client);
-    await client.query('COMMIT');
+    await client.query("COMMIT");
     return result;
   } catch (error) {
-    await client.query('ROLLBACK');
+    await client.query("ROLLBACK");
     throw error;
   } finally {
     client.release();
@@ -70,22 +75,43 @@ export async function transaction(db, work) {
 }
 
 export async function snapshot(db) {
-  const {rows: [row]} = await db.query('SELECT revision, data FROM niyam_workspace WHERE id');
+  const {
+    rows: [row],
+  } = await db.query("SELECT revision, data FROM niyam_workspace WHERE id");
   return row;
 }
 
 export async function audit(db, actor, action, target) {
-  await db.query('INSERT INTO niyam_audit(actor,action,target) VALUES ($1,$2,$3)', [actor, action, target]);
+  await db.query(
+    "INSERT INTO niyam_audit(actor,action,target) VALUES ($1,$2,$3)",
+    [actor, action, target],
+  );
 }
 
-export async function change(db, revision, actor, action, target, work, {planning = true} = {}) {
-  return transaction(db, async client => {
-    const {rows: [row]} = await client.query('SELECT revision, data FROM niyam_workspace WHERE id FOR UPDATE');
-    if (revision !== row.revision) throw new HttpError(409, 'The workspace changed. Refresh and try again.');
+export async function change(
+  db,
+  revision,
+  actor,
+  action,
+  target,
+  work,
+  { planning = true } = {},
+) {
+  return transaction(db, async (client) => {
+    const {
+      rows: [row],
+    } = await client.query(
+      "SELECT revision, data FROM niyam_workspace WHERE id FOR UPDATE",
+    );
+    if (revision !== row.revision)
+      throw new HttpError(409, "The workspace changed. Refresh and try again.");
     const result = await work(row.data, client);
     const next = row.revision + Number(planning);
-    await client.query('UPDATE niyam_workspace SET revision=$1, data=$2 WHERE id', [next, row.data]);
+    await client.query(
+      "UPDATE niyam_workspace SET revision=$1, data=$2 WHERE id",
+      [next, row.data],
+    );
     await audit(client, actor, action, target);
-    return {revision: next, result};
+    return { revision: next, result };
   });
 }
