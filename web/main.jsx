@@ -2789,6 +2789,13 @@ function Imports({ data, eventId, sessions, revision, act, notify, busy }) {
                   send("/ai/extract", { text, kind }),
                 );
                 if (result) {
+                  if (!result.rows.length) {
+                    notify(
+                      "No records were extracted. Review the document or import a structured file.",
+                      true,
+                    );
+                    return;
+                  }
                   setRows(result.rows);
                   setJson(JSON.stringify(result.rows, null, 2));
                   setPreview(null);

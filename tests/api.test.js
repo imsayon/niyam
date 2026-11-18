@@ -206,6 +206,52 @@ test(
         ).status,
         503,
       );
+      const nativeFetch = globalThis.fetch;
+      const previousKey = process.env.GEMINI_API_KEY;
+      process.env.GEMINI_API_KEY = "test-key-only";
+      globalThis.fetch = async (url, options) => {
+        if (
+          String(url).startsWith("https://generativelanguage.googleapis.com/")
+        ) {
+          const config = JSON.parse(options.body).generationConfig;
+          assert.equal(config.responseSchema.maxItems, undefined);
+          assert.equal(config.maxOutputTokens, 12000);
+          return Response.json({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      text: JSON.stringify([
+                        {
+                          name: "Synthetic Faculty",
+                          code: "TEST1",
+                          email: "",
+                          department: "CSE",
+                        },
+                      ]),
+                    },
+                  ],
+                },
+              },
+            ],
+          });
+        }
+        return nativeFetch(url, options);
+      };
+      try {
+        const extracted = await request(
+          "/ai/extract",
+          { kind: "faculty", text: "Faculty test record" },
+          cookies.admin,
+        );
+        assert.equal(extracted.status, 200);
+        assert.equal(extracted.data.rows[0].code, "TEST1");
+      } finally {
+        globalThis.fetch = nativeFetch;
+        if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
+        else process.env.GEMINI_API_KEY = previousKey;
+      }
       const latest = (await request("/workspace", undefined, cookies.admin))
         .data;
       const withdrawn = await request(

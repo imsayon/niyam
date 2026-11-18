@@ -24,7 +24,7 @@ For frontend development, run `npm run dev` in a second terminal. Set `DEV_ORIGI
 ## Implemented workflows
 
 - Session authentication with scrypt password hashes, hashed opaque session tokens, HTTP-only cookies, origin checks, login throttling, and server role enforcement.
-- Verified-email registration, administrator approval with a unique roster link, account disabling, password recovery, profile editing, and password changes. Set `SMTP_URL`, `MAIL_FROM`, and `PUBLIC_ORIGIN` to activate delivery. Outgoing recovery and verification links expire after 30 minutes. The evaluation accounts are pre-provisioned.
+- Verified-email registration, administrator approval with a unique roster link, account disabling, password recovery, profile editing, and password changes. Set `SMTP_URL`, `MAIL_FROM`, and `PUBLIC_ORIGIN` to activate delivery. On Render Free, use a provider-supported alternate port such as [Resend SMTPS on 2465](https://resend.com/docs/send-with-smtp), since [standard SMTP ports are blocked](https://render.com/docs/free). A verified sending domain is required. Outgoing recovery and verification links expire after 30 minutes. The evaluation accounts are pre-provisioned.
 - Faculty and student CRUD, room creation and bench layout editing, paper and sitting setup, individual and bulk enrollment, availability and leave approval.
 - Explicit lifecycle through draft, configured, published, completed, and archived. Published assignments remain immutable until a new reviewed revision is published.
 - Deterministic seating by physical bench position, configurable semester/paper/department selectors, accessible and blocked seats, optional same-paper adjacency restrictions, room and student conflict checks.
