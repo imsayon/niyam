@@ -1,0 +1,65 @@
+name: Verify and package Niyam
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: niyam
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: niyam_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+        env:
+          TEST_DATABASE_URL: postgresql://niyam:ci-only-password@localhost:5432/niyam_test
+      - run: npm run build
+  windows:
+    runs-on: windows-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run desktop:win -- --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Niyam-Windows-x64
+          path: release/*.exe
+          retention-days: 14
+  linux:
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run desktop:linux -- --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Niyam-Linux-x64
+          path: release/*.AppImage
+          retention-days: 14
