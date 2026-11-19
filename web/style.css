@@ -1663,33 +1663,87 @@ summary {
   font-size: 13px;
   line-height: 1.9;
 }
-.login-bench {
-  display: flex;
-  gap: 11px;
-  margin: 40px 0 11px;
-  border-bottom: 5px solid #527393;
-  padding: 0 6px 13px;
-  width: max-content;
-  transform: rotate(-3deg);
+.login-visual {
+  position: relative;
+  width: 288px;
+  height: 106px;
+  margin: 36px 0 11px;
 }
-.login-bench > span {
+.login-plan {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 228px;
+  padding: 15px 18px 17px;
+  border: 1px solid #aac4e332;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #294b72, #1c385a);
+  box-shadow: 0 14px 28px #07192b26;
+  transform: rotate(-5deg);
+}
+.login-plan-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 15px;
+}
+.login-plan-header span {
+  width: 72px;
+  height: 3px;
+  border-radius: 2px;
+  background: #adc3dc6b;
+}
+.login-plan-header > i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #edbe53;
+}
+.login-plan-seats {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 9px 11px;
+}
+.login-plan-seats i {
+  height: 11px;
+  border: 1px solid #9bb8d34a;
+  border-radius: 3px;
+  background: #7998bc4a;
+}
+.login-plan-seats i:nth-child(3n) {
+  border-color: #f4d480a6;
+  background: #d9ae50;
+}
+.login-sheet {
+  position: absolute;
+  right: 0;
+  top: 14px;
+  width: 84px;
+  padding: 13px 14px;
+  border: 1px solid #ffe9b48c;
+  border-radius: 8px;
+  background: #f4edda;
+  box-shadow: 0 14px 28px #07192b30;
+  transform: rotate(8deg);
+}
+.login-sheet > span {
   display: grid;
   place-items: center;
-  width: 67px;
-  height: 51px;
-  border-radius: 6px;
-  background: #3d689a;
-  color: #e0eafa;
-  font-size: 10px;
-  font-weight: 700;
+  width: 26px;
+  height: 26px;
+  margin-bottom: 13px;
+  border-radius: 50%;
+  color: #294b64;
+  background: #e8d49e;
 }
-.login-bench > span:nth-child(2) {
-  background: #5d887f;
-  color: #e5f5ed;
+.login-sheet > i {
+  display: block;
+  height: 3px;
+  margin: 7px 0;
+  border-radius: 2px;
+  background: #36536b47;
 }
-.login-bench > span:nth-child(3) {
-  background: #e9b94e;
-  color: #283c53;
+.login-sheet > i:last-child {
+  width: 65%;
 }
 .bench-label {
   font-size: 7px;
@@ -2248,28 +2302,11 @@ summary {
     letter-spacing: -2px;
     margin: 17px 0;
   }
-  .login-copy h1 br {
-    display: none;
-  }
-  .login-copy h1 em {
-    display: block;
-  }
   .login-copy > p {
     font-size: 11px;
   }
-  .login-bench {
-    position: absolute;
-    right: 26px;
-    bottom: 45px;
-    margin: 0;
-    opacity: 0.55;
-    gap: 5px;
-    transform: rotate(-8deg);
-  }
-  .login-bench > span {
-    width: 40px;
-    height: 34px;
-    font-size: 8px;
+  .login-visual {
+    display: none;
   }
   .bench-label {
     display: none;

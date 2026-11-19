@@ -7,8 +7,8 @@ The evaluation release uses synthetic records. The seeded exam has 120 candidate
 ## Open the application
 
 - Website — https://niyam-exams.onrender.com
-- Source — private repository https://github.com/imsayon/niyam
-- Desktop releases — https://github.com/imsayon/niyam-downloads/releases
+- Source — https://github.com/imsayon/niyam
+- Desktop releases — https://github.com/imsayon/niyam/releases
 - Local demo credentials — ignored `local/demo-accounts.json`, readable by the local user only. Account emails are `admin@niyam.example`, `faculty@niyam.example`, and `student@niyam.example`.
 
 The Windows installer is unsigned. The desktop client requires an internet connection and displays the same hosted workspace as the browser. Render's free service sleeps after inactivity. Its first request may take about a minute to wake. The PostgreSQL database runs on a separate Neon free project and persists through app restarts.
@@ -65,7 +65,7 @@ Optional settings include `GEMINI_API_KEY`, `GEMINI_MODEL`, `SMTP_URL`, `MAIL_FR
 
 The Windows CI job silently installs the built NSIS installer on a fresh Windows runner, launches the installed app with Playwright, signs in as the provisioned student, checks the published room and paper, reloads, and captures evidence. It uses a repository secret for the password. Build artifacts and evidence are retained for 14 days. This checks installation and application operation on the CI runner. It does not establish SmartScreen reputation.
 
-The public downloads repository contains release binaries. The main source repository remains private. The app's public download link points to the release asset and includes its SHA-256 checksum in the release metadata.
+The Niyam repository contains the application source, CI workflows, documentation, and desktop releases. Its homepage links to the live website, which deploys directly from the same repository. The app's public download link points to the release asset and includes its SHA-256 checksum in the release metadata.
 
 ## Backups and migration
 

@@ -760,10 +760,26 @@ function Login({ session, login, notify, theme, setTheme }) {
             <br />
             Bring clarity to your next examination.
           </p>
-          <div className="login-bench">
-            <span>SEM 3</span>
-            <span>SEM 5</span>
-            <span>SEM 7</span>
+          <div className="login-visual" aria-hidden="true">
+            <div className="login-plan">
+              <div className="login-plan-header">
+                <span />
+                <i />
+              </div>
+              <div className="login-plan-seats">
+                {Array.from({ length: 18 }, (_, seat) => (
+                  <i key={seat} />
+                ))}
+              </div>
+            </div>
+            <div className="login-sheet">
+              <span>
+                <Check size={17} strokeWidth={2.5} />
+              </span>
+              <i />
+              <i />
+              <i />
+            </div>
           </div>
           <div className="bench-label">
             INTELLIGENT SEATING · BUILT AROUND YOUR RULES
@@ -982,8 +998,8 @@ function Overview({ data, sessions, event, run, go, setModal }) {
             <div className="art-front">EXAMINATION HALL</div>
             {Array.from({ length: 12 }, (_, i) => (
               <div className="art-bench" key={i}>
-                {[3, 5, 7].map((sem) => (
-                  <i key={sem} className={"sem-" + sem} />
+                {Array.from({ length: 3 }, (_, seat) => (
+                  <i key={seat} />
                 ))}
               </div>
             ))}
