@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile, chmod } from "node:fs/promises";
 import { randomBytes, randomUUID } from "node:crypto";
 import { database, setup, transaction } from "../server/store.js";
-import { hashPassword } from "../server/accounts.js";
+import { adminEmail, hashPassword } from "../server/accounts.js";
 import { fixture } from "../server/fixture.js";
 
 export async function seedDemo(db, passwords) {
@@ -17,15 +17,19 @@ export async function seedDemo(db, passwords) {
         [fixture()],
       );
     }
+    await client.query(
+      "UPDATE niyam_accounts SET email=$1 WHERE role='admin' AND email='admin@niyam.example'",
+      [adminEmail],
+    );
     for (const role of ["admin", "faculty", "student"]) {
       if (!passwords[role] || passwords[role].length < 14)
         throw new Error("Demo passwords must have at least 14 characters");
       await client.query(
         `INSERT INTO niyam_accounts(id,email,name,role,status,roster_id,password_hash,verified_at)
-        VALUES ($1,$2,$3,$4,'active',$5,$6,now()) ON CONFLICT(email) DO NOTHING`,
+        VALUES ($1,$2,$3,$4,'active',$5,$6,now()) ON CONFLICT DO NOTHING`,
         [
           randomUUID(),
-          role + "@niyam.example",
+          role === "admin" ? adminEmail : role + "@niyam.example",
           "Demo " + role,
           role,
           role === "admin" ? null : role + "-1",

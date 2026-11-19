@@ -5,6 +5,7 @@ import { database, setup } from "../server/store.js";
 import { application } from "../server/index.js";
 import { seedDemo } from "../scripts/seed.js";
 import { defaultPolicy } from "../server/workspace.js";
+import { adminEmail } from "../server/accounts.js";
 
 const url = process.env.TEST_DATABASE_URL;
 test(
@@ -52,10 +53,22 @@ test(
         };
       }
       assert.equal((await request("/workspace")).status, 401);
+      assert.equal((await request("/session")).data.adminEmail, adminEmail);
+      assert.equal(
+        (
+          await request("/session", {
+            email: adminEmail,
+            password: passwords.admin,
+            role: "faculty",
+          })
+        ).status,
+        401,
+      );
       const cookies = {};
       for (const role of ["admin", "faculty", "student"]) {
         const result = await request("/session", {
-          email: role + "@niyam.example",
+          email: role === "admin" ? adminEmail : role + "@niyam.example",
+          role,
           password: passwords[role],
         });
         assert.equal(result.status, 200);

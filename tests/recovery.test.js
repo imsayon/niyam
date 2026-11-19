@@ -127,7 +127,7 @@ test(
         400,
       );
       const admin = await call("/session", {
-        email: "admin@niyam.example",
+        email: "admin.niyam@dsce.edu.in",
         password: adminPassword,
       });
       const state = await call("/workspace", undefined, admin.cookie);

@@ -9,7 +9,9 @@ The evaluation release uses synthetic records. The seeded exam has 120 candidate
 - Website — https://niyam-exams.onrender.com
 - Source — https://github.com/imsayon/niyam
 - Desktop releases — https://github.com/imsayon/niyam/releases
-- Local demo credentials — ignored `local/demo-accounts.json`, readable by the local user only. Account emails are `admin@niyam.example`, `faculty@niyam.example`, and `student@niyam.example`.
+- Administrator — `admin.niyam@dsce.edu.in`, with a privately held password.
+- Faculty and students — select your role and sign in with the Google account whose email the administrator added to the relevant roster.
+- Local demo credentials — ignored `local/demo-accounts.json`, readable by the local user only. Without Neon Auth, the local seed also provisions `faculty@niyam.example` and `student@niyam.example` for testing.
 
 The Windows installer is unsigned. The desktop client requires an internet connection and displays the same hosted workspace as the browser. Render's free service sleeps after inactivity. Its first request may take about a minute to wake. The PostgreSQL database runs on a separate Neon free project and persists through app restarts.
 
@@ -24,7 +26,8 @@ For frontend development, run `npm run dev` in a second terminal. Set `DEV_ORIGI
 ## Implemented workflows
 
 - Session authentication with scrypt password hashes, hashed opaque session tokens, HTTP-only cookies, origin checks, login throttling, and server role enforcement.
-- Verified-email registration, administrator approval with a unique roster link, account disabling, password recovery, profile editing, and password changes. Set `SMTP_URL`, `MAIL_FROM`, and `PUBLIC_ORIGIN` to activate delivery. On Render Free, use a provider-supported alternate port such as [Resend SMTPS on 2465](https://resend.com/docs/send-with-smtp), since [standard SMTP ports are blocked](https://render.com/docs/free). A verified sending domain is required. Outgoing recovery and verification links expire after 30 minutes. The evaluation accounts are pre-provisioned.
+- Role-specific sign-in on one page. The hosted demo permits password sign-in only for the administrator. Verified Google sign-in requires a unique match in the selected role's roster. Disabling an account or changing its roster email blocks access for the previous session.
+- Password recovery is optional. Set `SMTP_URL`, `MAIL_FROM`, and `PUBLIC_ORIGIN` to activate delivery. On Render Free, use a provider-supported alternate port such as [Resend SMTPS on 2465](https://resend.com/docs/send-with-smtp), since [standard SMTP ports are blocked](https://render.com/docs/free). A verified sending domain is required. Recovery links expire after 30 minutes.
 - Faculty and student CRUD, room creation and bench layout editing, paper and sitting setup, individual and bulk enrollment, availability and leave approval.
 - Explicit lifecycle through draft, configured, published, completed, and archived. Published assignments remain immutable until a new reviewed revision is published.
 - Deterministic seating by physical bench position, configurable semester/paper/department selectors, accessible and blocked seats, optional same-paper adjacency restrictions, room and student conflict checks.
@@ -41,6 +44,7 @@ flowchart LR
     Browser[Web browser] --> API[Express API]
     Desktop[Sandboxed Electron client] --> API
     API --> DB[(PostgreSQL)]
+    API --> Auth[Neon Auth · Google]
     API --> Gemini[Gemini API]
     API --> SMTP[Configured SMTP provider]
 ```
@@ -59,11 +63,13 @@ To provision evaluation accounts at first deploy, set `DEMO_ADMIN_PASSWORD`, `DE
 
 Optional settings include `GEMINI_API_KEY`, `GEMINI_MODEL`, `SMTP_URL`, `MAIL_FROM`, `INSTALLER_URL`, and `INSTALLER_SHA256`. A saved encrypted Gemini configuration takes precedence over the environment key. Console inspection is available in the owner's Neon dashboard.
 
+To enable roster-based Google sign-in, set `NEON_AUTH_URL` and an independent, randomly generated `NEON_AUTH_COOKIE_SECRET` of at least 32 characters. In Neon Auth, enable Google, disable email/password, and trust the application's `PUBLIC_ORIGIN`. The hosted demo uses Neon's shared Google client.
+
 ## Verification and releases
 
-`npm test` runs solver regressions. Set `TEST_DATABASE_URL` to run the API integration test in an isolated temporary schema. CI provides a dedicated PostgreSQL service and runs the integration tests, a production frontend build, and Windows/Linux packaging.
+`npm test` runs solver regressions. Set `TEST_DATABASE_URL` to run the API integration tests in isolated temporary schemas. CI provides PostgreSQL and runs the tests and production frontend build. Windows and Linux packaging runs on release tags.
 
-The Windows CI job silently installs the built NSIS installer on a fresh Windows runner, launches the installed app with Playwright, signs in as the provisioned student, checks the published room and paper, reloads, and captures evidence. It uses a repository secret for the password. Build artifacts and evidence are retained for 14 days. This checks installation and application operation on the CI runner. It does not establish SmartScreen reputation.
+The current desktop release predates Google sign-in. The desktop authentication flow and Windows installation smoke test need an update before the next desktop release.
 
 The Niyam repository contains the application source, CI workflows, documentation, and desktop releases. Its homepage links to the live website, which deploys directly from the same repository. The app's public download link points to the release asset and includes its SHA-256 checksum in the release metadata.
 

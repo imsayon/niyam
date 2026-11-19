@@ -1777,7 +1777,32 @@ summary {
   color: var(--muted);
   margin-bottom: 30px;
 }
-.login-form form > .button {
+.login-roles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-bottom: 22px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+.login-roles button {
+  min-height: 39px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.login-roles button[aria-selected="true"] {
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--blue);
+}
+.login-form form > .button,
+.login-form .login-google {
   width: 100%;
   margin-top: 12px;
   justify-content: space-between;
@@ -1801,11 +1826,6 @@ summary {
   font-size: 11px;
   color: var(--blue);
   padding: 0;
-}
-.login-form-inner > .micro {
-  font-size: 10px;
-  line-height: 1.8;
-  margin-bottom: 0;
 }
 .login-download {
   margin-top: 38px;

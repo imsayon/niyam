@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import nodemailer from "nodemailer";
 import { z } from "zod";
 import { audit, HttpError, transaction } from "./store.js";
+import { googleAuth } from "./google.js";
 
 const scrypt = promisify(derive);
 const digest = (token) => createHash("sha256").update(token).digest("hex");
@@ -20,6 +21,8 @@ const email = z
 const password = z.string().min(12).max(128);
 const role = z.enum(["faculty", "student"]);
 const maxAge = 12 * 60 * 60 * 1000;
+export const adminEmail = "admin.niyam@dsce.edu.in";
+const googleCallback = "/api/session/google/callback";
 
 export async function hashPassword(value) {
   const salt = randomBytes(16).toString("hex");
@@ -44,6 +47,7 @@ export function publicAccount(account) {
     role: account.role,
     status: account.status,
     rosterId: account.roster_id,
+    passwordLogin: account.password_hash != null,
   };
 }
 
@@ -57,6 +61,7 @@ export function requireRole(req, ...roles) {
 }
 
 export function accountApi(app, db, origin) {
+  const google = googleAuth(origin);
   const cookie = {
     httpOnly: true,
     sameSite: "strict",
@@ -68,6 +73,21 @@ export function accountApi(app, db, origin) {
       ? nodemailer.createTransport(process.env.SMTP_URL)
       : null;
   const attempts = new Map();
+  const googleCookie = { ...cookie, sameSite: "lax", path: googleCallback };
+
+  async function createSession(client, req, account) {
+    const value = token();
+    await client.query(
+      "DELETE FROM niyam_sessions WHERE expires_at<now() OR token_hash=$1",
+      [req.cookies.niyam ? digest(req.cookies.niyam) : ""],
+    );
+    await client.query("INSERT INTO niyam_sessions VALUES ($1,$2,$3)", [
+      digest(value),
+      account.id,
+      new Date(Date.now() + maxAge),
+    ]);
+    return value;
+  }
 
   function limit(req, action) {
     const now = Date.now();
@@ -121,8 +141,16 @@ export function accountApi(app, db, origin) {
         rows: [account],
       } = await db.query(
         `SELECT a.* FROM niyam_sessions s JOIN niyam_accounts a ON a.id=s.account_id
-        WHERE s.token_hash=$1 AND s.expires_at>now() AND a.status IN ('active','pending')`,
-        [digest(session)],
+        WHERE s.token_hash=$1 AND s.expires_at>now() AND a.status IN ('active','pending')
+        AND (
+          (a.password_hash IS NOT NULL AND (a.role='admin' OR NOT $2::boolean))
+          OR (a.password_hash IS NULL AND EXISTS (
+            SELECT 1 FROM niyam_workspace w,
+              jsonb_array_elements(w.data->(CASE a.role WHEN 'faculty' THEN 'faculty' ELSE 'students' END)) person
+            WHERE person->>'id'=a.roster_id AND lower(person->>'email')=a.email
+          ))
+        )`,
+        [digest(session), !!google],
       );
       req.account = account;
     }
@@ -132,14 +160,21 @@ export function accountApi(app, db, origin) {
   app.get("/api/session", (req, res) =>
     res.json({
       account: req.account ? publicAccount(req.account) : null,
-      registration: !!mail,
+      adminEmail,
+      google: !!google,
+      registration: !!mail && !google,
+      recovery: !!mail,
     }),
   );
 
   app.post("/api/session", async (req, res) => {
     limit(req, "login");
     const body = z
-      .object({ email, password: z.string().min(1).max(128) })
+      .object({
+        email,
+        password: z.string().min(1).max(128),
+        role: z.enum(["admin", "faculty", "student"]).optional(),
+      })
       .parse(req.body);
     const {
       rows: [account],
@@ -148,26 +183,115 @@ export function accountApi(app, db, origin) {
     ]);
     if (
       !(await correctPassword(body.password, account?.password_hash)) ||
-      !["active", "pending"].includes(account.status)
+      !["active", "pending"].includes(account.status) ||
+      (body.role && body.role !== account.role) ||
+      (account.role === "admin" && account.email !== adminEmail) ||
+      (google && account.role !== "admin")
     ) {
       throw new HttpError(401, "Email or password is incorrect.");
     }
-    const value = token();
-    await transaction(db, async (client) => {
-      await client.query(
-        "DELETE FROM niyam_sessions WHERE expires_at<now() OR token_hash=$1",
-        [req.cookies.niyam ? digest(req.cookies.niyam) : ""],
-      );
-      await client.query("INSERT INTO niyam_sessions VALUES ($1,$2,$3)", [
-        digest(value),
-        account.id,
-        new Date(Date.now() + maxAge),
-      ]);
-    });
+    const value = await transaction(db, (client) =>
+      createSession(client, req, account),
+    );
     res
       .cookie("niyam", value, { ...cookie, maxAge })
       .json({ account: publicAccount(account) });
   });
+
+  if (google) {
+    app.post("/api/session/google", async (req, res) => {
+      limit(req, "google");
+      const body = z.object({ role }).parse(req.body);
+      const state = token();
+      const callback = new URL(googleCallback, origin);
+      callback.searchParams.set("role", body.role);
+      callback.searchParams.set("state", state);
+      const url = await google.start(res, callback);
+      if (!url)
+        throw new HttpError(502, "Google sign-in is temporarily unavailable.");
+      res
+        .cookie("niyam_google", body.role + "." + state, {
+          ...googleCookie,
+          maxAge: 600000,
+        })
+        .json({ url });
+    });
+
+    app.get(googleCallback, async (req, res) => {
+      const selection = role.safeParse(req.query.role);
+      const selectedRole = selection.success ? selection.data : "student";
+      const redirect = (error) =>
+        res.redirect(303, "/?role=" + selectedRole + "&signIn=" + error);
+      res.clearCookie("niyam_google", googleCookie);
+      if (
+        !selection.success ||
+        typeof req.query.state !== "string" ||
+        req.cookies.niyam_google !== selectedRole + "." + req.query.state
+      )
+        return redirect("retry");
+      const callback = new URL(req.originalUrl, origin);
+      const verified = email.safeParse(await google.finish(req, res, callback));
+      if (!verified.success) return redirect("retry");
+      const address = verified.data;
+      const value = await transaction(db, async (client) => {
+        const {
+          rows: [workspace],
+        } = await client.query(
+          "SELECT data FROM niyam_workspace WHERE id FOR UPDATE",
+        );
+        const matches = workspace.data[
+          selectedRole === "faculty" ? "faculty" : "students"
+        ].filter((person) => person.email?.toLowerCase() === address);
+        if (matches.length !== 1) return null;
+        const person = matches[0];
+        const { rows } = await client.query(
+          `SELECT * FROM niyam_accounts
+           WHERE email=$1 OR (role=$2 AND roster_id=$3) FOR UPDATE`,
+          [address, selectedRole, person.id],
+        );
+        const account = rows[0];
+        if (
+          rows.length > 1 ||
+          (account &&
+            (account.role !== selectedRole ||
+              (account.roster_id && account.roster_id !== person.id) ||
+              !["active", "pending"].includes(account.status)))
+        )
+          return null;
+        const id = account?.id ?? randomUUID();
+        if (!account) {
+          await client.query(
+            `INSERT INTO niyam_accounts(id,email,name,role,status,roster_id,verified_at)
+             VALUES ($1,$2,$3,$4,'active',$5,now())`,
+            [id, address, person.name, selectedRole, person.id],
+          );
+          await audit(client, id, "account.google_linked", person.id);
+        } else if (
+          account.email !== address ||
+          account.roster_id !== person.id ||
+          account.password_hash ||
+          account.status === "pending"
+        ) {
+          await client.query(
+            `UPDATE niyam_accounts SET email=$1,status='active',roster_id=$2,password_hash=NULL,verified_at=now()
+             WHERE id=$3`,
+            [address, person.id, id],
+          );
+          await client.query("DELETE FROM niyam_sessions WHERE account_id=$1", [
+            id,
+          ]);
+          await client.query(
+            "DELETE FROM niyam_account_tokens WHERE account_id=$1",
+            [id],
+          );
+          await audit(client, id, "account.google_linked", person.id);
+        }
+        return createSession(client, req, { id });
+      });
+      if (!value) return redirect("roster");
+      res.cookie("niyam", value, { ...cookie, maxAge }).redirect(303, "/");
+    });
+  }
 
   app.delete("/api/session", async (req, res) => {
     if (req.cookies.niyam)
@@ -178,7 +302,7 @@ export function accountApi(app, db, origin) {
   });
 
   app.post("/api/register", async (req, res) => {
-    if (!mail)
+    if (!mail || google)
       throw new HttpError(
         503,
         "Email delivery is not configured. Contact the administrator for access.",
@@ -219,8 +343,9 @@ export function accountApi(app, db, origin) {
     const {
       rows: [account],
     } = await db.query(
-      `SELECT id,email FROM niyam_accounts WHERE email=$1 AND status='active'`,
-      [address],
+      `SELECT id,email FROM niyam_accounts WHERE email=$1 AND status='active'
+       AND password_hash IS NOT NULL AND (role='admin' OR NOT $2::boolean)`,
+      [address, !!google],
     );
     if (account) await link(account, "reset");
     res.json({ ok: true });

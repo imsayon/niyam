@@ -346,7 +346,7 @@ function App() {
         <button
           onClick={async () => {
             await api("/session", { method: "DELETE" });
-            setSession({ account: null, registration: session.registration });
+            setSession({ ...session, account: null });
           }}
         >
           Sign out
@@ -709,22 +709,55 @@ function Toast({ notice, close }) {
     </div>
   );
 }
+const signInRoles = ["admin", "faculty", "student"];
+
 function Login({ session, login, notify, theme, setTheme }) {
   const [mode, setMode] = useState("login"),
     [busy, setBusy] = useState(false),
     [release, setRelease] = useState(null);
+  const [role, setRole] = useState(() => {
+    const selected = new URLSearchParams(location.search).get("role");
+    return signInRoles.includes(selected) ? selected : "admin";
+  });
+  const googleLogin = role !== "admin" && session?.google;
   useEffect(() => {
     api("/releases")
       .then(setRelease)
       .catch(() => {});
   }, []);
+  useEffect(() => {
+    const url = new URL(location.href);
+    const error = url.searchParams.get("signIn");
+    if (!error) return;
+    notify(
+      error === "roster"
+        ? "This email has no available roster entry for that role. Contact your administrator."
+        : "Google sign-in could not be completed. Try again.",
+      true,
+    );
+    url.searchParams.delete("role");
+    url.searchParams.delete("signIn");
+    history.replaceState(null, "", url);
+  }, [notify]);
+
+  async function signInWithGoogle() {
+    setBusy(true);
+    try {
+      const { url } = await send("/session/google", { role });
+      location.assign(url);
+    } catch (error) {
+      notify(error.message, true);
+      setBusy(false);
+    }
+  }
+
   async function submit(event) {
     event.preventDefault();
     setBusy(true);
     const body = Object.fromEntries(new FormData(event.currentTarget));
     try {
       if (mode === "login")
-        login({ ...session, ...(await send("/session", body)) });
+        login({ ...session, ...(await send("/session", { ...body, role })) });
       else if (mode === "register") {
         await send("/register", body);
         notify("Check your inbox to verify your email. Sign in to continue.");
@@ -806,77 +839,139 @@ function Login({ session, login, notify, theme, setTheme }) {
           </h2>
           <p>
             {mode === "login"
-              ? "Sign in to your examination workspace."
+              ? googleLogin
+                ? "Use the Google account listed for you by your administrator."
+                : "Sign in to your examination workspace."
               : mode === "register"
                 ? "Verify your email before an administrator approves access."
                 : "Receive a secure link at your registered email address."}
           </p>
-          <form onSubmit={submit}>
-            {mode === "register" && (
-              <>
-                <Field label="Full name">
-                  <input name="name" required autoComplete="name" />
-                </Field>
-                <Field label="Requested role">
-                  <select name="role">
-                    <option value="student">Student</option>
-                    <option value="faculty">Faculty</option>
-                  </select>
-                </Field>
-              </>
-            )}
-            <Field label="Email address">
-              <input
-                name="email"
-                type="email"
-                autoComplete="username"
-                placeholder="you@institution.edu"
-                required
-              />
-            </Field>
-            {mode !== "recovery" && (
-              <Field label="Password">
-                <input
-                  name="password"
-                  type="password"
-                  minLength={mode === "register" ? 12 : 1}
-                  maxLength={128}
-                  autoComplete={
-                    mode === "register" ? "new-password" : "current-password"
-                  }
-                  placeholder="Enter your password"
-                  required
-                />
-              </Field>
-            )}
-            <button className="button primary" disabled={busy}>
-              {busy
-                ? "Please wait…"
-                : mode === "login"
-                  ? "Sign in"
-                  : mode === "register"
-                    ? "Request access"
-                    : "Send recovery link"}
-              <ArrowRight size={18} />
-            </button>
-          </form>
-          <div className="login-links">
-            <button
-              onClick={() => setMode(mode === "login" ? "register" : "login")}
-              disabled={mode === "login" && !session?.registration}
-            >
-              {mode === "login" ? "Request access" : "Back to sign in"}
-            </button>
-            <button onClick={() => setMode("recovery")}>
-              Forgot password?
-            </button>
+          <div
+            aria-label="Sign-in role"
+            role="tablist"
+            className="login-roles"
+            onKeyDown={(event) => {
+              const index = signInRoles.indexOf(role);
+              const next = {
+                ArrowLeft: (index + 2) % 3,
+                ArrowRight: (index + 1) % 3,
+                Home: 0,
+                End: 2,
+              }[event.key];
+              if (next === undefined || busy || typeof next !== "number")
+                return;
+              event.preventDefault();
+              event.currentTarget.children[next].focus();
+              setRole(signInRoles[next]);
+              setMode("login");
+            }}
+          >
+            {signInRoles.map((item) => (
+              <button
+                key={item}
+                type="button"
+                role="tab"
+                id={"sign-in-" + item}
+                aria-selected={item === role}
+                aria-controls="sign-in-panel"
+                tabIndex={item === role ? 0 : -1}
+                disabled={busy}
+                onClick={() => {
+                  setRole(item);
+                  setMode("login");
+                }}
+              >
+                {pretty(item)}
+              </button>
+            ))}
           </div>
-          {!session?.registration && (
-            <p className="micro">
-              For evaluation access, use the account supplied by your
-              administrator. Email delivery is awaiting configuration.
-            </p>
-          )}
+          <div
+            role="tabpanel"
+            id="sign-in-panel"
+            aria-labelledby={"sign-in-" + role}
+          >
+            {googleLogin ? (
+              <button
+                className="button primary login-google"
+                type="button"
+                onClick={signInWithGoogle}
+                disabled={busy}
+              >
+                {busy ? "Connecting…" : "Continue with Google"}
+                <ArrowRight size={18} />
+              </button>
+            ) : (
+              <form key={role + mode} onSubmit={submit}>
+                {mode === "register" && (
+                  <>
+                    <Field label="Full name">
+                      <input name="name" required autoComplete="name" />
+                    </Field>
+                    <input type="hidden" name="role" value={role} />
+                  </>
+                )}
+                <Field label="Email address">
+                  <input
+                    name="email"
+                    type="email"
+                    autoComplete="username"
+                    placeholder="you@institution.edu"
+                    defaultValue={
+                      role === "admin" ? session?.adminEmail : undefined
+                    }
+                    readOnly={role === "admin" && !!session?.adminEmail}
+                    required
+                  />
+                </Field>
+                {mode !== "recovery" && (
+                  <Field label="Password">
+                    <input
+                      name="password"
+                      type="password"
+                      minLength={mode === "register" ? 12 : 1}
+                      maxLength={128}
+                      autoComplete={
+                        mode === "register"
+                          ? "new-password"
+                          : "current-password"
+                      }
+                      placeholder="Enter your password"
+                      required
+                    />
+                  </Field>
+                )}
+                <button className="button primary" disabled={busy}>
+                  {busy
+                    ? "Please wait…"
+                    : mode === "login"
+                      ? "Sign in"
+                      : mode === "register"
+                        ? "Request access"
+                        : "Send recovery link"}
+                  <ArrowRight size={18} />
+                </button>
+              </form>
+            )}
+            {!googleLogin && (mode !== "login" || session?.recovery) && (
+              <div className="login-links">
+                {(mode !== "login" ||
+                  (role !== "admin" && session?.registration)) && (
+                  <button
+                    onClick={() =>
+                      setMode(mode === "login" ? "register" : "login")
+                    }
+                  >
+                    {mode === "login" ? "Request access" : "Back to sign in"}
+                  </button>
+                )}
+                {mode !== "recovery" && session?.recovery && (
+                  <button onClick={() => setMode("recovery")}>
+                    Forgot password?
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <AccountLink notify={notify} />
           <div className="login-download">
             <Download size={19} />
@@ -3121,22 +3216,26 @@ function SettingsPage({
           <Field label="Email">
             <input disabled value={account.email} />
           </Field>
-          <Field label="Current password (for a password change)">
-            <input
-              name="current"
-              type="password"
-              autoComplete="current-password"
-            />
-          </Field>
-          <Field label="New password (at least 12 characters)">
-            <input
-              name="password"
-              type="password"
-              minLength={12}
-              maxLength={128}
-              autoComplete="new-password"
-            />
-          </Field>
+          {account.passwordLogin && (
+            <>
+              <Field label="Current password (for a password change)">
+                <input
+                  name="current"
+                  type="password"
+                  autoComplete="current-password"
+                />
+              </Field>
+              <Field label="New password (at least 12 characters)">
+                <input
+                  name="password"
+                  type="password"
+                  minLength={12}
+                  maxLength={128}
+                  autoComplete="new-password"
+                />
+              </Field>
+            </>
+          )}
           <button className="button primary">Save account</button>
         </form>
       </section>

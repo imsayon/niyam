@@ -32,6 +32,7 @@ jobs:
           TEST_DATABASE_URL: postgresql://niyam:ci-only-password@localhost:5432/niyam_test
       - run: npm run build
   windows:
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     needs: verify
     steps:
@@ -66,6 +67,7 @@ jobs:
           path: release/*.exe
           retention-days: 14
   linux:
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     needs: verify
     steps:

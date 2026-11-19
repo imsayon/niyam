@@ -25,10 +25,11 @@ export async function setup(db) {
       role text NOT NULL CHECK (role IN ('admin','faculty','student')),
       status text NOT NULL CHECK (status IN ('pending','active','rejected','disabled')),
       roster_id text,
-      password_hash text NOT NULL,
+      password_hash text,
       verified_at timestamptz,
       UNIQUE (role, roster_id)
     );
+    ALTER TABLE niyam_accounts ALTER COLUMN password_hash DROP NOT NULL;
     CREATE TABLE IF NOT EXISTS niyam_sessions (
       token_hash text PRIMARY KEY,
       account_id uuid NOT NULL REFERENCES niyam_accounts(id) ON DELETE CASCADE,
