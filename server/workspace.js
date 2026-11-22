@@ -506,6 +506,11 @@ export function importRows(data, body) {
   }
   for (const [index, raw] of body.rows.entries()) {
     try {
+      if (raw.type === "historical-lab-batch" && body.kind !== "references")
+        fail(
+          "This is a historical lab reference, not a current student record. " +
+          "Choose References or explicitly prepare a student roster with confirmed department and semester.",
+        );
       if (body.kind === "references") {
         const next = schemas.references.parse(raw);
         const key = importKey(body.kind, next);
