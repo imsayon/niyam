@@ -125,8 +125,8 @@ try {
   });
   let rev = await revisionOf();
   const created = await postStudent(rev, "NEXT0001");
-  assert.equal(created.status, 201, await created.text().catch(() => ""));
   const inserted = await created.json();
+  assert.equal(created.status, 201, JSON.stringify(inserted));
   assert.equal(inserted.revision, rev + 1);
   assert.ok(inserted.result);
   assert.equal((await postStudent(rev, "NEXT0002")).status, 409, "Stale revision must be rejected");
