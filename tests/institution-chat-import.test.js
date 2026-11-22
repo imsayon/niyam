@@ -70,6 +70,38 @@ test("institution, persisted AI conversation, and reviewed duplicate import are 
   assert.deepEqual(history.data.messages.map((m) => m.role), ["user", "assistant"]);
   assert.equal((await req("/ai/history", { cookie: adminCookie })).data.messages.length, 0);
   assert.equal((await db.query("SELECT count(*) FROM niyam_ai_messages")).rows[0].count, "2");
+  // A second message must receive earlier turns as context and be saved without leaking other accounts.
+  const fetchBefore = globalThis.fetch;
+  const originalKey = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = "integration-test-only-not-a-real-credential";
+  globalThis.fetch = (url, options) => {
+    if (String(url).startsWith("https://generativelanguage.googleapis.com/")) {
+      const payload = JSON.parse(options.body);
+      const current = JSON.parse(payload.contents[0].parts[0].text);
+      assert.equal(current.question, "And what about my schedule?");
+      assert.equal(current.previousTurns.length, 2);
+      assert.equal(current.previousTurns[0].text, "hi");
+      return Promise.resolve(Response.json({
+        candidates: [{ content: { parts: [{ text: "Your schedule is not yet published." }] } }],
+      }));
+    }
+    return fetchBefore(url, options);
+  };
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 850));
+    const followedUp = await req("/ai/ask", {
+      cookie: studentCookie,
+      body: { question: "And what about my schedule?" },
+    });
+    assert.equal(followedUp.status, 200, JSON.stringify(followedUp.data));
+    assert.match(followedUp.data.answer, /not yet published/);
+  } finally {
+    globalThis.fetch = fetchBefore;
+    if (originalKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalKey;
+  }
+  assert.equal((await req("/ai/history", { cookie: studentCookie })).data.messages.length, 4);
+  assert.equal((await db.query("SELECT count(*) FROM niyam_ai_messages")).rows[0].count, "4");
   assert.equal((await req("/ai/history", { cookie: studentCookie, method: "DELETE" })).status, 200);
   assert.equal((await req("/ai/history", { cookie: studentCookie })).data.messages.length, 0);
 
