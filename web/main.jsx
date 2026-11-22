@@ -3696,8 +3696,23 @@ function SettingsPage({
 function Assistant({ eventId, close, onAttach }) {
   const [question, setQuestion] = useState(""),
     [messages, setMessages] = useState([]),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [loadingHistory, setLoadingHistory] = useState(true);
   const attachment = useRef(null);
+  const bottom = useRef(null);
+  useEffect(() => {
+    let active = true;
+    api("/ai/history")
+      .then((result) => { if (active) setMessages(result.messages); })
+      .catch((error) => {
+        if (active) setMessages([{ role: "error", text: error.message }]);
+      })
+      .finally(() => { if (active) setLoadingHistory(false); });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [messages, busy, loadingHistory]);
   return (
     <section className="assistant">
       <header>
@@ -3705,12 +3720,33 @@ function Assistant({ eventId, close, onAttach }) {
           <Sparkles size={18} />
           <strong>Ask Niyam</strong>
         </div>
-        <button className="icon" aria-label="Close assistant" onClick={close}>
-          <X size={18} />
-        </button>
+        <div className="assistant-actions">
+          <button
+            className="icon"
+            type="button"
+            aria-label="Clear conversation"
+            title="Clear saved conversation"
+            disabled={busy || loadingHistory || !messages.length}
+            onClick={async () => {
+              if (!window.confirm("Clear your saved Ask Niyam conversation?")) return;
+              try {
+                await api("/ai/history", { method: "DELETE" });
+                setMessages([]);
+              } catch (error) {
+                setMessages((old) => [...old, { role: "error", text: error.message }]);
+              }
+            }}
+          >
+            <Trash2 size={16} />
+          </button>
+          <button className="icon" aria-label="Close assistant" onClick={close}>
+            <X size={18} />
+          </button>
+        </div>
       </header>
       <div className="chat-messages">
-        {!messages.length && (
+        {loadingHistory && <p className="micro">Loading your conversation…</p>}
+        {!messages.length && !loadingHistory && (
           <div className="chat-empty">
             <Sparkles size={30} />
             <h3>Your examination assistant</h3>
@@ -3726,11 +3762,12 @@ function Assistant({ eventId, close, onAttach }) {
           </p>
         ))}
         {busy && <p className="micro">Checking authorized records…</p>}
+        <span ref={bottom} />
       </div>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
-          if (!question.trim() || busy) return;
+          if (!question.trim() || busy || loadingHistory) return;
           const text = question;
           setQuestion("");
           setMessages((old) => [...old, { role: "user", text }]);
@@ -3778,9 +3815,10 @@ function Assistant({ eventId, close, onAttach }) {
           onChange={(e) => setQuestion(e.target.value)}
           placeholder="Ask about your examination…"
           maxLength={600}
+          disabled={busy || loadingHistory}
           aria-label="Message"
         />
-        <button className="icon" disabled={busy} aria-label="Send message">
+        <button className="icon" disabled={busy || loadingHistory || !question.trim()} aria-label="Send message">
           <Send size={18} />
         </button>
       </form>
