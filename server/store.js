@@ -41,6 +41,15 @@ export async function setup(db) {
       purpose text NOT NULL CHECK (purpose IN ('verify','reset')),
       expires_at timestamptz NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS niyam_desktop_logins (
+      request_id uuid PRIMARY KEY,
+      token_hash text NOT NULL,
+      role text NOT NULL CHECK (role IN ('faculty','student')),
+      account_id uuid REFERENCES niyam_accounts(id) ON DELETE CASCADE,
+      approved_at timestamptz,
+      expires_at timestamptz NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS niyam_desktop_logins_expiry ON niyam_desktop_logins (expires_at);
     CREATE TABLE IF NOT EXISTS niyam_audit (
       id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       at timestamptz NOT NULL DEFAULT now(),
