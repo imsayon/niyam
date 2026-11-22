@@ -1,0 +1,47 @@
+name: Niyam Next migration preview
+on:
+  pull_request:
+    paths:
+      - "next-app/**"
+      - "server/api-only.js"
+      - ".github/workflows/next-parallel.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  next-preview:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: niyam
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: niyam_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://niyam:ci-only-password@127.0.0.1:5432/niyam_test
+      NIYAM_SANDBOX: "1"
+      NIYAM_LEGACY_API_ORIGIN: http://127.0.0.1:4317
+      PUBLIC_ORIGIN: http://127.0.0.1:4318
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install stable baseline
+        run: npm ci
+      - name: Install Next preview dependencies
+        run: npm install --prefix next-app --no-audit --no-fund
+      - name: Build Next App Router
+        run: npm run build --prefix next-app
+      - name: Validate Next TypeScript
+        run: npm run typecheck --prefix next-app
+      - name: Verify native routes and local API compatibility
+        run: npm run smoke --prefix next-app
