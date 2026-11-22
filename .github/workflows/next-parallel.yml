@@ -39,6 +39,16 @@ jobs:
         run: npm ci
       - name: Install Next preview dependencies
         run: npm install --prefix next-app --no-audit --no-fund
+      - name: Emit dependency lockfile for precise review
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const text = readFileSync("next-app/package-lock.json", "utf8");
+          const size = 3000;
+          for (let i = 0; i * size < text.length; i++)
+            console.log("NIYAM_LOCK_CHUNK " + i + " " + encodeURIComponent(text.slice(i * size, (i + 1) * size)));
+          console.log("NIYAM_LOCK_END " + Math.ceil(text.length / size) + " " + text.length);
+          NODE
       - name: Build Next App Router without unresolved imports
         run: |
           set -o pipefail
