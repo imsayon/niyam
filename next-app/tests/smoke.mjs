@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { database as legacyDatabase, setup } from "../../server/store.js";
+import { saveConfiguration } from "../../server/ai-config.js";
 import { seedDemo } from "../../scripts/seed.js";
 import { spawn } from "node:child_process";
 import { chromium } from "@playwright/test";
@@ -14,6 +15,8 @@ const apiPort = 4317;
 const nextPort = 4318;
 if (!process.env.DATABASE_URL || process.env.NIYAM_SANDBOX !== "1")
   throw new Error("Smoke test requires isolated DATABASE_URL and NIYAM_SANDBOX=1");
+// Synthetic fixture key, inherited by both local test processes. Never a production credential.
+process.env.AI_ENCRYPTION_KEY ||= randomBytes(32).toString("hex");
 
 const passwords = {
   admin: randomBytes(18).toString("hex"),
@@ -96,6 +99,12 @@ try {
   assert.equal(typeof nativeAi.enabled, "boolean");
   assert.equal(typeof nativeAi.model, "string");
   assert.equal(nativeAi.key, undefined, "Never expose provider secret");
+  const aiFixture = legacyDatabase();
+  await saveConfiguration(aiFixture, "ci-test-gemini-provider-key-never-used", "gemini-3.1-flash-lite");
+  await aiFixture.end();
+  const persistedAi = await fetch(base + "/api/ai/status", { headers: { Cookie: cookie } });
+  assert.equal(persistedAi.status, 200);
+  assert.deepEqual(await persistedAi.json(), { enabled: true, model: "gemini-3.1-flash-lite" });
   // Still-unmigrated export route proves the compatibility bridge works.
   const legacyExport = await fetch(base + "/api/export/demo-event/timetable.pdf");
   assert.equal(legacyExport.status, 401, "Legacy Express API must enforce unauthenticated access");
