@@ -99,7 +99,7 @@ test("institution, persisted AI conversation, and reviewed duplicate import are 
   assert.equal(preview.data.errors.length, 1);
   const blocked = await req("/import/commit", { cookie: adminCookie, body: input });
   assert.equal(blocked.status, 422);
-  assert.equal((await db.query("SELECT data->'references' AS refs FROM niyam_workspace")).rows[0].refs.length, 0);
+  assert.equal((await db.query("SELECT coalesce(jsonb_array_length(data->'references'),0) AS count FROM niyam_workspace")).rows[0].count, 0);
   const committed = await req("/import/commit", {
     cookie: adminCookie, body: { ...input, skipInvalid: true },
   });
