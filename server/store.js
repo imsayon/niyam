@@ -13,6 +13,9 @@ export function database(url = process.env.DATABASE_URL) {
 export async function setup(db) {
   await db.query(`
     CREATE TABLE IF NOT EXISTS niyam_settings (name text PRIMARY KEY, value jsonb NOT NULL);
+    INSERT INTO niyam_settings(name,value) VALUES
+      ('institution','{"name":"Dayananda Sagar College of Engineering","shortName":"DSCE"}'::jsonb)
+    ON CONFLICT (name) DO NOTHING;
     CREATE TABLE IF NOT EXISTS niyam_workspace (
       id boolean PRIMARY KEY DEFAULT true CHECK (id),
       revision integer NOT NULL DEFAULT 0,
