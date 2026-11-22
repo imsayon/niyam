@@ -1,6 +1,6 @@
 import type { Classification, ImportedRecord, ImportPreview, ImportRow, UploadResult, ScreenProps, Reference, State } from "./types";
 import { useEffect, useState } from "react";
-import { isHistoricalBatchDocument, prepareStudentRoster } from "../../../shared/historical-roster.js";
+import { isHistoricalBatchDocument, reviewStudentRoster } from "../../../shared/historical-roster.js";
 import { api, errorMessage, send } from "./client";
 import { Check, Download, FileUp } from "lucide-react";
 import { Badge, Field, Select, Table } from "./controls";
@@ -235,18 +235,17 @@ export function Imports({
         )}
         {historicalDocument && kind === "references" && (
           <p className="micro" role="status">
-            Historical records are saved as references, not active exam candidates.
+            You may keep this as a historical reference, or review the detected student identities.
             To create current student profiles, select Students above and confirm
             their department and current semester.
           </p>
         )}
         {historicalDocument && kind === "students" && (
           <div className="import-preview historical-roster" aria-live="polite">
-            <h3>Convert historical batch into a current student roster</h3>
+            <h3>Review batch students for the current roster</h3>
             <p className="micro">
-              This file contains historical lab assignments, not a verified
-              current enrollment list. Confirm the department and CURRENT semester
-              before creating student profiles. Imported profiles have no email;
+              Student identifiers were extracted from the batch document. Confirm their
+              department and CURRENT semester before creating or updating profiles. Imported profiles have no email;
               add verified emails before enabling Google sign-in or enrollment.
               Existing USNs are shown as updates at preview, not duplicated.
             </p>
@@ -277,14 +276,20 @@ export function Imports({
             <button className="button" type="button" disabled={parsing || busy}
               onClick={() => {
                 try {
-                  const prepared = prepareStudentRoster(sourceRows, {
+                  const review = reviewStudentRoster(sourceRows, {
                     department: rosterDepartment, semester: rosterSemester,
                   });
-                  setRows(prepared);
-                  setJson(JSON.stringify(prepared, null, 2));
+                  setRows(review.roster);
+                  setJson(JSON.stringify(review.roster, null, 2));
                   setConvertedRoster(true);
                   setPreview(null);
-                  notify("Student roster prepared. Review every row before importing.");
+                  notify(
+                    review.conflicts.length
+                      ? review.conflicts.length + " conflicting student IDs require review in the import preview."
+                      : "Student roster prepared. " + review.identicalDuplicates +
+                        " exact duplicate rows consolidated. Review before importing.",
+                    review.conflicts.length > 0,
+                  );
                 } catch (error) {
                   notify(errorMessage(error), true);
                 }
@@ -294,7 +299,7 @@ export function Imports({
             {convertedRoster && (
               <p className="micro" role="status">
                 Student rows prepared. Review the JSON and validate before committing.
-                Any duplicate USNs will be reported for review.
+                Exact repeated USNs with the same name are consolidated; conflicting identities will be flagged.
               </p>
             )}
           </div>

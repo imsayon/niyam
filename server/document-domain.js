@@ -409,11 +409,13 @@ export function extractDocx(fileName, buffer) {
       if (structured) return structured;
     }
     let rows;
-    if (classification.destination === "references")
-      rows =
-        classification.referenceType === "historical-lab-batch"
-          ? historicalBatchRows(fileName, document, classification)
-          : timetableRows(fileName, document, classification);
+    // Lab batch tables contain student identities. Keep the source-year evidence
+    // and require a deliberate roster review rather than misclassifying as
+    // reference-only rows or auto-enrolling students in an exam.
+    if (classification.referenceType === "historical-lab-batch")
+      rows = historicalBatchRows(fileName, document, classification);
+    else if (classification.destination === "references")
+      rows = timetableRows(fileName, document, classification);
     else rows = genericRows(fileName, document);
     if (rows.length > 250)
       throw new HttpError(413, "Split this document into batches of at most 250 rows.");
