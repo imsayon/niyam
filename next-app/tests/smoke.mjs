@@ -112,6 +112,52 @@ try {
   const history = await fetch(base + "/api/ai/history", { headers: { Cookie: cookie } });
   assert.equal(history.status, 200);
   assert.deepEqual((await history.json()).messages, []);
+  // Native CRUD must preserve optimistic revisions, unique identifiers,
+  // transaction rollback, and single-winner concurrency under row locks.
+  const revisionOf = async () =>
+    (await (await fetch(base + "/api/workspace", { headers: { Cookie: cookie } })).json()).revision;
+  const studentRecord = (code, name = "Next Native Candidate") =>
+    ({ name, code, email: "", department: "ISE", semester: 3 });
+  const adminHeaders = { Cookie: cookie, Origin: base, "Content-Type": "application/json" };
+  const postStudent = (revision, code) => fetch(base + "/api/records/students", {
+    method: "POST", headers: adminHeaders,
+    body: JSON.stringify({ revision, record: studentRecord(code) }),
+  });
+  let rev = await revisionOf();
+  const created = await postStudent(rev, "NEXT0001");
+  assert.equal(created.status, 201, await created.text().catch(() => ""));
+  const inserted = await created.json();
+  assert.equal(inserted.revision, rev + 1);
+  assert.ok(inserted.result);
+  assert.equal((await postStudent(rev, "NEXT0002")).status, 409, "Stale revision must be rejected");
+  assert.equal((await postStudent(inserted.revision, "NEXT0001")).status, 409, "Duplicate code must be rejected");
+  assert.equal(await revisionOf(), inserted.revision, "Failed changes cannot advance revision");
+
+  const amended = await fetch(base + "/api/records/students/" + inserted.result, {
+    method: "PATCH", headers: adminHeaders,
+    body: JSON.stringify({ revision: inserted.revision, record: studentRecord("NEXT0001", "Next Updated Candidate") }),
+  });
+  assert.equal(amended.status, 200);
+  const amendedResult = await amended.json();
+  assert.equal(amendedResult.revision, inserted.revision + 1);
+  const afterAmend = (await (await fetch(base + "/api/workspace", { headers: { Cookie: cookie } })).json()).data;
+  assert.equal(afterAmend.students.find(s => s.id === inserted.result)?.name, "Next Updated Candidate");
+
+  const deleted = await fetch(base + "/api/records/students/" + inserted.result, {
+    method: "DELETE", headers: adminHeaders, body: JSON.stringify({ revision: amendedResult.revision }),
+  });
+  assert.equal(deleted.status, 200);
+  const deletion = await deleted.json();
+  rev = deletion.revision;
+  assert.equal((await (await fetch(base + "/api/workspace", { headers: { Cookie: cookie } })).json())
+    .data.students.some(s => s.id === inserted.result), false);
+  const race = await Promise.all([postStudent(rev, "NEXTRACE1"), postStudent(rev, "NEXTRACE2")]);
+  assert.deepEqual(race.map(r => r.status).sort(), [201, 409], "Concurrent writers must have one winner");
+  const winning = await race[race.findIndex(r => r.status === 201)].json();
+  const cleaned = await fetch(base + "/api/records/students/" + winning.result, {
+    method: "DELETE", headers: adminHeaders, body: JSON.stringify({ revision: winning.revision }),
+  });
+  assert.equal(cleaned.status, 200);
   const accounts = await fetch(base + "/api/accounts", { headers: { Cookie: cookie } });
   assert.equal(accounts.status, 200);
   const listed = await accounts.json();
@@ -134,6 +180,12 @@ try {
   assert.equal(personal.faculty, undefined, "Student must not read the full institutional workspace");
   assert.equal((await fetch(base + "/api/audit", { headers: { Cookie: studentCookie } })).status, 403);
   assert.equal((await fetch(base + "/api/accounts", { headers: { Cookie: studentCookie } })).status, 403);
+  const deniedWrite = await fetch(base + "/api/records/students", {
+    method: "POST",
+    headers: { Cookie: studentCookie, Origin: base, "Content-Type": "application/json" },
+    body: JSON.stringify({ revision: await revisionOf(), record: studentRecord("FORBIDDEN") }),
+  });
+  assert.equal(deniedWrite.status, 403, "Student must never modify another student's records");
   const logout = await fetch(base + "/api/session", { method: "DELETE", headers: { Cookie: cookie, Origin: base } });
   assert.equal(logout.status, 200);
   assert.equal((await fetch(base + "/api/institution", { headers: { Cookie: cookie } })).status, 401);
