@@ -14,7 +14,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ki
     const kind = kindSchema.parse(rawKind);
     const account = await requireRole(request, ...(kind === "leaves" ? ["admin", "faculty"] as const : ["admin"] as const));
     const body = z.object({ revision: requestRevision, record: z.unknown() }).parse(await jsonBody(request));
-    const value = recordSchema(kind).parse(body.record);
+    const value = recordSchema(kind).parse(body.record) as Record<string, unknown>;
     if (kind === "leaves" && account.role === "faculty") value.facultyId = account.roster_id;
     if (kind === "leaves") value.status = "pending";
     if (kind === "events") Object.assign(value, { status: "draft", publishedRunId: null });

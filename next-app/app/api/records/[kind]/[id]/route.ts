@@ -17,13 +17,14 @@ export async function PATCH(request: NextRequest, context: Params) {
     const value = kind === "leaves"
       ? z.object({ status: z.enum(["approved", "rejected"]) }).parse(body.record)
       : recordSchema(kind).parse(body.record);
+    const parsedValue = value as Record<string, unknown>;
     const result = await change(body.revision, account.id, kind + ".updated", key, (data: any) => {
       const row = get(data[kind], key);
       if (kind === "events") editable(data, key);
       if (kind === "sittings") editable(data, row.eventId);
       if (kind === "enrollments") editable(data, get(data.sittings, row.sittingId).eventId);
       if (kind === "leaves" && row.status !== "pending") fail("This request has already been reviewed.");
-      return update(data, kind, { ...row, ...value });
+      return update(data, kind, { ...row, ...parsedValue });
     });
     return Response.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return recordError(error); }
