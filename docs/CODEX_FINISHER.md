@@ -58,7 +58,7 @@ Do not stop after writing plans or a visual redesign. A strong final report need
 
 ## Source-verified route parity checkpoint
 
-At the November 23 preview checkpoint, `docs/API_PARITY.md` tracks 38 distinct registered method/path pairs: **12 native Next handlers and 26 remaining temporary Express handlers**. Check the live branch before relying on counts. A pinned `next-app/package-lock.json` is committed; use `npm ci --prefix next-app`. CI runs Next build, TypeScript, isolated PostgreSQL API smoke and Chromium browser interaction tests. Those green tests prove tested slices only, not entire product parity.
+At the November 23 preview checkpoint, `docs/API_PARITY.md` tracks 38 distinct registered method/path pairs: **13 native Next handlers and 25 remaining temporary Express handlers**. Check the live branch before relying on counts. A pinned `next-app/package-lock.json` is committed; use `npm ci --prefix next-app`. CI runs Next build, TypeScript, isolated PostgreSQL API smoke and Chromium browser interaction tests. Those green tests prove tested slices only, not entire product parity.
 
 The local one-command finisher is `scripts/codex-finish.sh` after switching to this migration branch. Its branch/dirty-tree checks are intentional; do not bypass them to save effort.
 
