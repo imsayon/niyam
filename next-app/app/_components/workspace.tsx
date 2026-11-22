@@ -472,6 +472,7 @@ export function WorkspaceApp({ initialSession }: { initialSession: Session }) {
         <Assistant
           eventId={eventId}
           close={() => setAi(false)}
+          onChanged={refresh}
           onAttach={
             account.role === "admin"
               ? (file) => {
