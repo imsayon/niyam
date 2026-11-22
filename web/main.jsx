@@ -207,6 +207,7 @@ function App() {
     [data, setData] = useState(empty),
     [revision, setRevision] = useState(0);
   const [readyFor, setReadyFor] = useState(null);
+  const [institution, setInstitution] = useState(null);
   const currentAccount = useRef(null);
   currentAccount.current = session?.account?.id;
   const workspaceVersion = useRef(null);
@@ -285,6 +286,17 @@ function App() {
       .catch((error) => notify(error.message, true))
       .finally(() => setLoading(false));
   }, [notify]);
+  useEffect(() => {
+    if (!session?.account?.id) {
+      setInstitution(null);
+      return;
+    }
+    let active = true;
+    api("/institution")
+      .then((value) => { if (active) setInstitution(value); })
+      .catch((error) => { if (active) notify(error.message, true); });
+    return () => { active = false; };
+  }, [session?.account?.id, notify]);
   useEffect(() => {
     if (session?.account?.status !== "active") return;
     refresh().catch((error) => notify(error.message, true));
@@ -469,8 +481,8 @@ function App() {
             <Building2 size={19} />
           </span>
           <div>
-            <strong>Niyam College</strong>
-            <small>Examination workspace</small>
+            <strong title={institution?.name}>{institution?.shortName || "Institution"}</strong>
+            <small title={institution?.name}>{institution?.name || "Examination workspace"}</small>
           </div>
           <Badge>{account.role}</Badge>
         </div>
@@ -639,15 +651,15 @@ function App() {
               setSession={setSession}
               theme={theme}
               setTheme={setTheme}
+              institution={institution}
+              setInstitution={setInstitution}
             />
           )}
         </main>
         <footer className="app-footer">
           <span>Niyam · Examination operations</span>
           <span>
-            {session.firebase
-              ? "ISE · Department workspace"
-              : "Examination workspace"}
+            {institution?.shortName || "Examination workspace"}
           </span>
         </footer>
       </div>
@@ -3462,10 +3474,16 @@ function SettingsPage({
   setSession,
   theme,
   setTheme,
+  institution,
+  setInstitution,
   notify,
   busy,
   act,
 }) {
+  const [institutionDraft, setInstitutionDraft] = useState({ name: "", shortName: "" });
+  useEffect(() => {
+    if (institution) setInstitutionDraft(institution);
+  }, [institution?.name, institution?.shortName]);
   const [status, setStatus] = useState(null),
     [release, setRelease] = useState(null),
     [key, setKey] = useState("");
@@ -3537,6 +3555,48 @@ function SettingsPage({
         </form>
       </section>
       <div>
+        {account.role === "admin" && (
+          <section className="panel">
+            <div className="panel-title">
+              <h3>Institution</h3>
+              <Building2 size={19} />
+            </div>
+            <form
+              className="dialog-content"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                try {
+                  const saved = await send("/institution", institutionDraft, "PUT");
+                  setInstitution(saved);
+                  notify("Institution details saved");
+                } catch (error) {
+                  notify(error.message, true);
+                }
+              }}
+            >
+              <Field label="Official institution name">
+                <input
+                  required maxLength={150} value={institutionDraft.name}
+                  onChange={(event) => setInstitutionDraft((old) => ({
+                    ...old, name: event.target.value,
+                  }))}
+                />
+              </Field>
+              <Field label="Short display name">
+                <input
+                  required maxLength={32} value={institutionDraft.shortName}
+                  onChange={(event) => setInstitutionDraft((old) => ({
+                    ...old, shortName: event.target.value,
+                  }))}
+                />
+              </Field>
+              <button className="button primary">Save institution</button>
+              <p className="micro">
+                Shared by all signed-in roles. Changes are persisted in PostgreSQL.
+              </p>
+            </form>
+          </section>
+        )}
         <section className="panel">
           <div className="panel-title">
             <h3>Appearance</h3>
