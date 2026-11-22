@@ -157,5 +157,6 @@ test("an existing student USN is an update, not another student", () => {
   assert.equal(reviewed.items.length, 1);
   assert.equal(reviewed.items[0].action, "update");
   assert.equal(reviewed.items[0].record.id, existing.id);
+  assert.equal(reviewed.items[0].record.email, existing.email);
   assert.equal(data.students[0].name, existing.name);
 });
