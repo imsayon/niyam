@@ -78,6 +78,14 @@ test(
         (await request("/accounts", undefined, cookies.student)).status,
         403,
       );
+      // A desktop OAuth approval cannot be claimed by another role or
+      // exchanged without the unpredictable verifier.
+      const pending = await request("/session/desktop/start", {
+        role: "student",
+      });
+      // This test runs with password fallback, not a Neon Auth provider.
+      assert.equal(pending.status, 503);
+
       const before = await request("/workspace", undefined, cookies.student);
       assert.equal(before.data.data.schedules.length, 0);
       let workspace = (await request("/workspace", undefined, cookies.admin))
