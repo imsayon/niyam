@@ -52,9 +52,9 @@ export async function POST(request: NextRequest) {
     if (usage.total >= 25 && !existing.rowCount)
       throw new ApiError(413, "Remove an existing saved document before adding more than 25.");
     const { rows: [saved] } = await db.query(
-      \`INSERT INTO niyam_ai_documents(id,account_id,file_name,content_hash,extracted_text)
+      `INSERT INTO niyam_ai_documents(id,account_id,file_name,content_hash,extracted_text)
        VALUES ($1,$2,$3,$4,$5) ON CONFLICT (account_id,content_hash)
-       DO UPDATE SET file_name=EXCLUDED.file_name,created_at=now() RETURNING id\`,
+       DO UPDATE SET file_name=EXCLUDED.file_name,created_at=now() RETURNING id`,
       [randomUUID(), account.id, name, digest, text],
     );
     await db.query(
