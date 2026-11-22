@@ -2,7 +2,7 @@
 
 The following table was extracted from Express route registrations in `server/index.js`, `server/accounts.js`, `server/institution.js`, `server/workspace.js`, `server/outputs.js`, and `server/documents.js`, plus the indirect Google callback constant. It maps **route implementations, not test coverage or deployment status**.
 
-**Current audit:** 38 registered API method/path pairs, 13 native Next preview handlers, 25 still served by the **temporary local-only Express sandbox**. Main production remains entirely Vite/Express. Not all indirect/dynamic route registrations can be proven by a simple textual inventory; recheck the source and client requests during final API parity testing.
+**Current audit:** 38 registered API method/path pairs, 16 native Next preview handlers, 22 still served by the **temporary local-only Express sandbox**. Main production remains entirely Vite/Express. Not all indirect/dynamic route registrations can be proven by a simple textual inventory; recheck the source and client requests during final API parity testing.
 
 | Method | API route | Current preview implementation | Existing source |
 |---|---|---|---|
@@ -25,9 +25,9 @@ The following table was extracted from Express route registrations in `server/in
 | `PUT` | `/api/institution` | Native (preview) | `server/institution.js` |
 | `GET` | `/api/workspace` | Native (preview) | `server/workspace.js` |
 | `GET` | `/api/audit` | Native (preview) | `server/workspace.js` |
-| `POST` | `/api/records/:kind` | Legacy (sandbox bridge) | `server/workspace.js` |
-| `PATCH` | `/api/records/:kind/:id` | Legacy (sandbox bridge) | `server/workspace.js` |
-| `DELETE` | `/api/records/:kind/:id` | Legacy (sandbox bridge) | `server/workspace.js` |
+| `POST` | `/api/records/:kind` | Native (preview) | `server/workspace.js` |
+| `PATCH` | `/api/records/:kind/:id` | Native (preview) | `server/workspace.js` |
+| `DELETE` | `/api/records/:kind/:id` | Native (preview) | `server/workspace.js` |
 | `POST` | `/api/accounts/:id/decision` | Legacy (sandbox bridge) | `server/workspace.js` |
 | `POST` | `/api/events/:id/transition` | Legacy (sandbox bridge) | `server/workspace.js` |
 | `POST` | `/api/events/:id/solve` | Legacy (sandbox bridge) | `server/workspace.js` |
