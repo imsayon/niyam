@@ -96,6 +96,11 @@ try {
   const history = await fetch(base + "/api/ai/history", { headers: { Cookie: cookie } });
   assert.equal(history.status, 200);
   assert.deepEqual((await history.json()).messages, []);
+  const accounts = await fetch(base + "/api/accounts", { headers: { Cookie: cookie } });
+  assert.equal(accounts.status, 200);
+  const listed = await accounts.json();
+  assert.ok(listed.length >= 3);
+  assert.equal(listed.find(a => a.role === "admin").passwordLogin, true);
   const audit = await fetch(base + "/api/audit", { headers: { Cookie: cookie } });
   assert.equal(audit.status, 200);
   assert.ok((await audit.json()).some(row => row.action === "institution.updated"));
@@ -112,6 +117,7 @@ try {
   assert.ok(Array.isArray(personal.schedules));
   assert.equal(personal.faculty, undefined, "Student must not read the full institutional workspace");
   assert.equal((await fetch(base + "/api/audit", { headers: { Cookie: studentCookie } })).status, 403);
+  assert.equal((await fetch(base + "/api/accounts", { headers: { Cookie: studentCookie } })).status, 403);
   const logout = await fetch(base + "/api/session", { method: "DELETE", headers: { Cookie: cookie, Origin: base } });
   assert.equal(logout.status, 200);
   assert.equal((await fetch(base + "/api/institution", { headers: { Cookie: cookie } })).status, 401);

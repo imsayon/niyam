@@ -2,7 +2,7 @@
 
 The following table was extracted from Express route registrations in `server/index.js`, `server/accounts.js`, `server/institution.js`, `server/workspace.js`, `server/outputs.js`, and `server/documents.js`, plus the indirect Google callback constant. It maps **route implementations, not test coverage or deployment status**.
 
-**Current audit:** 38 registered API method/path pairs, 11 native Next preview handlers, 27 still served by the **temporary local-only Express sandbox**. Main production remains entirely Vite/Express. Not all indirect/dynamic route registrations can be proven by a simple textual inventory; recheck the source and client requests during final API parity testing.
+**Current audit:** 38 registered API method/path pairs, 12 native Next preview handlers, 26 still served by the **temporary local-only Express sandbox**. Main production remains entirely Vite/Express. Not all indirect/dynamic route registrations can be proven by a simple textual inventory; recheck the source and client requests during final API parity testing.
 
 | Method | API route | Current preview implementation | Existing source |
 |---|---|---|---|
@@ -19,7 +19,7 @@ The following table was extracted from Express route registrations in `server/in
 | `POST` | `/api/recovery` | Legacy (sandbox bridge) | `server/accounts.js` |
 | `POST` | `/api/account-token` | Legacy (sandbox bridge) | `server/accounts.js` |
 | `PATCH` | `/api/profile` | Legacy (sandbox bridge) | `server/accounts.js` |
-| `GET` | `/api/accounts` | Legacy (sandbox bridge) | `server/accounts.js` |
+| `GET` | `/api/accounts` | Native (preview) | `server/accounts.js` |
 | `GET` | `/api/session/google/callback` | Legacy (sandbox bridge) | `server/accounts.js` |
 | `GET` | `/api/institution` | Native (preview) | `server/institution.js` |
 | `PUT` | `/api/institution` | Native (preview) | `server/institution.js` |
@@ -48,7 +48,7 @@ The following table was extracted from Express route registrations in `server/in
 ## Migration contract
 
 - Preserve URL/method, payload schema, response status/data, cookies, role authorization, revision conflict semantics, database transactions, AI read-only boundaries and desktop redirects.
-- The native session GET/POST/DELETE, institution GET/PUT, workspace GET, audit GET, AI history GET/DELETE, health GET and installer metadata GET are **preview implementations**. They are not proof of hosted Google-provider acceptance or complete feature parity.
+- The native accounts GET, session GET/POST/DELETE, institution GET/PUT, workspace GET, audit GET, AI history GET/DELETE, health GET and installer metadata GET are **preview implementations**. They are not proof of hosted Google-provider acceptance or complete feature parity.
 - The Next compatibility rewrite in `next-app/next.config.ts` must be **deleted before the final release**; adding another proxy or permanently embedding Express does not satisfy the goal.
 - Prioritize Google callback and desktop pairing, then operational write transactions / allocation / import / export, then Gemini endpoints, settings and account management. Use source-driven contract tests and Playwright before changing Render.
 - Do not modify the production `niyam` Neon branch while developing or testing.
