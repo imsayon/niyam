@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import "@fontsource-variable/manrope";
+import "@fontsource-variable/dm-sans";
 import "./globals.css";
 export const metadata: Metadata = {
   title: "Niyam | Examination operations",

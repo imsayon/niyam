@@ -3,7 +3,9 @@ on:
   pull_request:
     paths:
       - "next-app/**"
-      - "server/api-only.js"
+      - "server/**"
+      - "shared/**"
+      - "package*.json"
       - ".github/workflows/next-parallel.yml"
   workflow_dispatch:
 permissions:
@@ -27,7 +29,6 @@ jobs:
     env:
       DATABASE_URL: postgresql://niyam:ci-only-password@127.0.0.1:5432/niyam_test
       NIYAM_SANDBOX: "1"
-      NIYAM_LEGACY_API_ORIGIN: http://127.0.0.1:4317
       PUBLIC_ORIGIN: http://127.0.0.1:4318
     steps:
       - uses: actions/checkout@v4
@@ -35,6 +36,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            next-app/package-lock.json
       - name: Install stable baseline
         run: npm ci
       - name: Install pinned Next preview dependencies
@@ -52,3 +56,5 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Verify native routes, compatibility and browser workflow
         run: npm run smoke --prefix next-app
+      - name: Verify account lifecycle and desktop pairing
+        run: node next-app/tests/auth.mjs

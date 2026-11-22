@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { change } from "../../../../lib/workspace-change";
-import { checkOrigin, requireRole } from "../../../../lib/security";
-import { kindSchema, jsonBody, recordError, recordSchema, requestRevision } from "../../../../lib/record-helpers";
-import { update } from "../../../../lib/workspace-domain";
+import { checkOrigin, requireRole, safeResponse } from "../../../../lib/security";
+import { kindSchema, jsonBody, recordSchema, requestRevision } from "../../../../lib/record-helpers";
+import { update } from "../../../../../server/workspace-domain.js";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest, context: { params: Promise<{ kind: string }> }) {
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ki
     if (kind === "events") Object.assign(value, { status: "draft", publishedRunId: null });
     const key = randomUUID();
     const result = await change(body.revision, account.id, kind + ".created", key,
-      (data: any) => update(data, kind, { ...value, id: key }));
+      (data) => update(data, kind, { ...value, id: key }));
     return Response.json(result, { status: 201, headers: { "Cache-Control": "no-store" } });
-  } catch (error) { return recordError(error); }
+  } catch (error) { return safeResponse(error); }
 }

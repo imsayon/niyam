@@ -7,13 +7,12 @@ const weights = {
   duties: [1.2, .9, .7, 1, 1.7],
 };
 
-export function writeReportPdf(res, { institution, event, kind, run, headers, rows }) {
+export function createReportPdf({ institution, event, kind, run, headers, rows }) {
   const document = new PDFDocument({
     size: "A4",
     margin: 36,
     info: { Title: (institution.shortName || "Institution") + " - " + event.name + " - " + kind },
   });
-  document.pipe(res);
   const left = 36;
   const width = document.page.width - 72;
   const proportions = weights[kind] || headers.map(() => 1);
@@ -92,4 +91,9 @@ export function writeReportPdf(res, { institution, event, kind, run, headers, ro
   });
   footer();
   document.end();
+  return document;
+}
+
+export function writeReportPdf(res, report) {
+  createReportPdf(report).pipe(res);
 }

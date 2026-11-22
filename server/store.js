@@ -102,6 +102,7 @@ export async function snapshot(db) {
   const {
     rows: [row],
   } = await db.query("SELECT revision, data FROM niyam_workspace WHERE id");
+  if (!row) throw new HttpError(503, "Workspace is unavailable.");
   if (!row.data.references) row.data.references = [];
   return row;
 }
@@ -128,6 +129,7 @@ export async function change(
     } = await client.query(
       "SELECT revision, data FROM niyam_workspace WHERE id FOR UPDATE",
     );
+    if (!row) throw new HttpError(503, "Workspace is unavailable.");
     if (revision !== row.revision)
       throw new HttpError(409, "The workspace changed. Refresh and try again.");
     // Earlier demo fixtures did not contain this optional collection.

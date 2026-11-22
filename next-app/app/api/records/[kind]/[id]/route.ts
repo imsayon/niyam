@@ -1,10 +1,9 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import { database } from "../../../../../lib/db";
 import { change } from "../../../../../lib/workspace-change";
-import { checkOrigin, requireRole } from "../../../../../lib/security";
-import { kindSchema, jsonBody, recordError, recordSchema, recordId, requestRevision } from "../../../../../lib/record-helpers";
-import { editable, fail, get, remove, update } from "../../../../../lib/workspace-domain";
+import { checkOrigin, requireRole, safeResponse } from "../../../../../lib/security";
+import { kindSchema, jsonBody, recordSchema, recordId, requestRevision } from "../../../../../lib/record-helpers";
+import { editable, fail, get, remove, update } from "../../../../../../server/workspace-domain.js";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 type Params = { params: Promise<{ kind: string; id: string }> };
@@ -18,7 +17,7 @@ export async function PATCH(request: NextRequest, context: Params) {
       ? z.object({ status: z.enum(["approved", "rejected"]) }).parse(body.record)
       : recordSchema(kind).parse(body.record);
     const parsedValue = value as Record<string, unknown>;
-    const result = await change(body.revision, account.id, kind + ".updated", key, (data: any) => {
+    const result = await change(body.revision, account.id, kind + ".updated", key, (data) => {
       const row = get(data[kind], key);
       if (kind === "events") editable(data, key);
       if (kind === "sittings") editable(data, row.eventId);
@@ -27,7 +26,7 @@ export async function PATCH(request: NextRequest, context: Params) {
       return update(data, kind, { ...row, ...parsedValue });
     });
     return Response.json(result, { headers: { "Cache-Control": "no-store" } });
-  } catch (error) { return recordError(error); }
+  } catch (error) { return safeResponse(error); }
 }
 export async function DELETE(request: NextRequest, context: Params) {
   try {
@@ -35,7 +34,7 @@ export async function DELETE(request: NextRequest, context: Params) {
     const account = await requireRole(request, "admin");
     const params = await context.params, kind = kindSchema.parse(params.kind), key = recordId.parse(params.id);
     const body = z.object({ revision: requestRevision }).parse(await jsonBody(request));
-    const result = await change(body.revision, account.id, kind + ".deleted", key, async (data: any, client) => {
+    const result = await change(body.revision, account.id, kind + ".deleted", key, async (data, client) => {
       if (["faculty","students"].includes(kind)) {
         const { rowCount } = await client.query(
           "SELECT id FROM niyam_accounts WHERE role=$1 AND roster_id=$2",
@@ -46,5 +45,5 @@ export async function DELETE(request: NextRequest, context: Params) {
       return remove(data, kind, get(data[kind], key));
     });
     return Response.json(result, { headers: { "Cache-Control": "no-store" } });
-  } catch (error) { return recordError(error); }
+  } catch (error) { return safeResponse(error); }
 }

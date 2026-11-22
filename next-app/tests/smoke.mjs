@@ -5,13 +5,13 @@ import { seedDemo } from "../../scripts/seed.js";
 import { spawn } from "node:child_process";
 import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
+import { verifyContent } from "./content.mjs";
+import { verifyWorkspace } from "./workspace.mjs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const cwd = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const root = resolve(cwd, "..");
-const apiPort = 4317;
 const nextPort = 4318;
 if (!process.env.DATABASE_URL || process.env.NIYAM_SANDBOX !== "1")
   throw new Error("Smoke test requires isolated DATABASE_URL and NIYAM_SANDBOX=1");
@@ -30,7 +30,7 @@ await db.end();
 const children = [];
 function launch(args, workdir) {
   const child = spawn(process.execPath, args, {
-    cwd: workdir, env: { ...process.env, ...(workdir === root ? { PORT: String(apiPort) } : {}) },
+    cwd: workdir, env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
@@ -49,9 +49,7 @@ async function ready(path) {
   throw Error("Service not ready: " + path);
 }
 try {
-  launch(["server/api-only.js"], root);
-  await ready("http://127.0.0.1:" + apiPort + "/api/health");
-  launch(["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", String(nextPort)], cwd);
+  launch(["--import", "./tests/mock-gemini.mjs", "node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", String(nextPort)], cwd);
   const base = "http://127.0.0.1:" + nextPort;
   const health = await ready(base + "/api/health");
   assert.equal((await health.json()).status, "ok");
@@ -59,7 +57,7 @@ try {
   assert.equal(releases.status, 200);
   assert.match((await releases.json()).windows, /Niyam-Setup-x64\.exe$/);
   const session = await fetch(base + "/api/session");
-  assert.equal(session.status, 200, "Unmigrated session must reach sandbox API");
+  assert.equal(session.status, 200, "Native session handler responds");
   assert.equal(typeof (await session.json()).adminEmail, "string");
   const unauthenticated = await fetch(base + "/api/institution");
   assert.equal(unauthenticated.status, 401);
@@ -74,7 +72,7 @@ try {
   });
   assert.equal(signedIn.status, 200, await signedIn.text().catch(() => ""));
   const cookie = signedIn.headers.get("set-cookie")?.split(";")[0];
-  assert.ok(cookie?.startsWith("niyam="), "Native session must set the legacy-compatible cookie");
+  assert.ok(cookie?.startsWith("niyam="), "Native session must set the production-compatible cookie");
   assert.equal((await (await fetch(base + "/api/session", { headers: { Cookie: cookie } })).json()).account.role, "admin");
   const institution = await fetch(base + "/api/institution", { headers: { Cookie: cookie } });
   assert.equal(institution.status, 200);
@@ -105,9 +103,8 @@ try {
   const persistedAi = await fetch(base + "/api/ai/status", { headers: { Cookie: cookie } });
   assert.equal(persistedAi.status, 200);
   assert.deepEqual(await persistedAi.json(), { enabled: true, model: "gemini-3.1-flash-lite" });
-  // Still-unmigrated export route proves the compatibility bridge works.
-  const legacyExport = await fetch(base + "/api/export/demo-event/timetable.pdf");
-  assert.equal(legacyExport.status, 401, "Legacy Express API must enforce unauthenticated access");
+  const signedOutExport = await fetch(base + "/api/export/demo-event/timetable.pdf");
+  assert.equal(signedOutExport.status, 401, "Native exports require authentication");
   assert.equal((await fetch(base + "/api/ai/status")).status, 401);
   const history = await fetch(base + "/api/ai/history", { headers: { Cookie: cookie } });
   assert.equal(history.status, 200);
@@ -186,6 +183,8 @@ try {
     body: JSON.stringify({ revision: await revisionOf(), record: studentRecord("FORBIDDEN") }),
   });
   assert.equal(deniedWrite.status, 403, "Student must never modify another student's records");
+  await verifyWorkspace({ base, adminHeaders, studentCookie });
+  await verifyContent({ base, adminHeaders, studentCookie });
   const logout = await fetch(base + "/api/session", { method: "DELETE", headers: { Cookie: cookie, Origin: base } });
   assert.equal(logout.status, 200);
   assert.equal((await fetch(base + "/api/institution", { headers: { Cookie: cookie } })).status, 401);
@@ -216,7 +215,7 @@ try {
     await page.getByRole("tab", { name: "Admin" }).click();
     await page.getByRole("heading", { name: "Welcome back." }).waitFor();
   } finally { await browser.close(); }
-  console.log("Next App Router, PostgreSQL, native auth/role boundaries, legacy compatibility and browser smoke passed");
+  console.log("Next App Router, PostgreSQL, native auth/role boundaries and browser smoke passed");
 } catch (err) {
   for (const child of children) console.error(child.logs().slice(-4000));
   throw err;

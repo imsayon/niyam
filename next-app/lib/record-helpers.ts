@@ -1,22 +1,41 @@
-import { z, ZodError } from "zod";
-import { ApiError, safeResponse } from "./security";
-import { schemas } from "./workspace-domain";
+import { z } from "zod";
+import { schemas } from "../../server/workspace-domain.js";
+import { ApiError } from "./security";
 
-export const kindSchema = z.enum(Object.keys(schemas) as [string, ...string[]]);
-export const requestRevision = z.number().int().min(0);
-export const recordId = z.string().trim().min(1).max(80);
-export function recordSchema(kind: string): z.ZodTypeAny {
-  return (schemas as Record<string,z.ZodTypeAny>)[kind];
+export { id as recordId, revision as requestRevision } from "../../server/workspace-domain.js";
+
+type RecordKind = keyof typeof schemas;
+export const kindSchema = z.enum(Object.keys(schemas) as RecordKind[]);
+export function recordSchema(kind: RecordKind) {
+  return schemas[kind];
 }
-export async function jsonBody(request: Request) {
-  const raw = await request.text();
-  if (raw.length > 512 * 1024) throw new ApiError(413, "The request is too large.");
-  try { return JSON.parse(raw); }
+
+export async function readBytes(request: Request, limit: number) {
+  if (Number(request.headers.get("content-length")) > limit)
+    throw new ApiError(413, "The request is too large.");
+  if (!request.body) return Buffer.alloc(0);
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) return Buffer.concat(chunks, bytes);
+      bytes += value.byteLength;
+      if (bytes > limit) {
+        void reader.cancel().catch(() => {});
+        throw new ApiError(413, "The request is too large.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+export async function jsonBody(request: Request, limit = 512 * 1024): Promise<unknown> {
+  const bytes = await readBytes(request, limit);
+  try { return JSON.parse(bytes.toString("utf8")); }
   catch { throw new ApiError(400, "Invalid JSON."); }
-}
-export function recordError(error: unknown) {
-  if (error instanceof ZodError)
-    return Response.json({ error: "Correct the input and try again.",
-      details: error.issues.map(issue => ({ field: issue.path.join("."), message: issue.message })) }, { status: 422, headers: { "Cache-Control": "no-store" } });
-  return safeResponse(error);
 }
