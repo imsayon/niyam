@@ -378,6 +378,7 @@ const importSchema = z.object({
   eventId: id.optional(),
   sittingId: id.optional(),
   roomId: id.optional(),
+  skipInvalid: z.boolean().optional(),
 });
 function importKey(kind, row) {
   if (kind !== "references") return null;
@@ -896,18 +897,19 @@ export function workspaceApi(app, db) {
         "import.committed",
         body.kind,
         (data) => {
-          if (data.imports.includes(fingerprint))
-            fail("These exact rows were already imported.", 409);
           const { items, errors } = importRows(data, body);
-          if (errors.length)
+          if (errors.length && !body.skipInvalid)
             throw new HttpError(
               422,
-              "Correct the invalid rows before committing.",
+              "Correct the invalid rows or explicitly skip them before committing.",
               errors,
             );
+          if (!items.length)
+            fail("No valid records remain to import.", 422);
           for (const { record } of items) update(data, body.kind, record);
-          data.imports.push(fingerprint);
-          return items.length;
+          if (!data.imports.includes(fingerprint))
+            data.imports.push(fingerprint);
+          return { imported: items.length, skipped: errors.length };
         },
       ),
     );

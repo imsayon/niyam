@@ -13,6 +13,9 @@ export function database(url = process.env.DATABASE_URL) {
 export async function setup(db) {
   await db.query(`
     CREATE TABLE IF NOT EXISTS niyam_settings (name text PRIMARY KEY, value jsonb NOT NULL);
+    INSERT INTO niyam_settings(name,value) VALUES
+      ('institution','{"name":"Dayananda Sagar College of Engineering","shortName":"DSCE"}'::jsonb)
+    ON CONFLICT (name) DO NOTHING;
     CREATE TABLE IF NOT EXISTS niyam_workspace (
       id boolean PRIMARY KEY DEFAULT true CHECK (id),
       revision integer NOT NULL DEFAULT 0,
@@ -57,6 +60,16 @@ export async function setup(db) {
       action text NOT NULL,
       target text NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS niyam_ai_messages (
+      id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      account_id uuid NOT NULL REFERENCES niyam_accounts(id) ON DELETE CASCADE,
+      role text NOT NULL CHECK (role IN ('user','assistant')),
+      body text NOT NULL,
+      event_id text,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS niyam_ai_messages_account_id
+      ON niyam_ai_messages (account_id, id DESC);
     INSERT INTO niyam_workspace(data) VALUES ('{"events":[],"sittings":[],"rooms":[],"faculty":[],"students":[],"enrollments":[],"leaves":[],"runs":[],"imports":[],"references":[]}') ON CONFLICT DO NOTHING;
     UPDATE niyam_workspace SET data=jsonb_set(data,'{references}','[]'::jsonb,true) WHERE NOT (data ? 'references');
   `);
@@ -117,6 +130,8 @@ export async function change(
     );
     if (revision !== row.revision)
       throw new HttpError(409, "The workspace changed. Refresh and try again.");
+    // Earlier demo fixtures did not contain this optional collection.
+    row.data.references ??= [];
     const result = await work(row.data, client);
     const next = row.revision + Number(planning);
     await client.query(

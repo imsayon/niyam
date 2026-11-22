@@ -362,6 +362,10 @@ a:focus-visible {
   height: 35px;
   color: #8ca3c1;
 }
+.institution > div {
+  min-width: 0;
+  flex: 1;
+}
 .institution strong {
   font-size: 11px;
   color: #e0e9f5;
@@ -371,6 +375,10 @@ a:focus-visible {
   font-size: 9px;
   color: #8da0ba;
   margin-top: 4px;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .institution .badge {
   font-size: 8px;
@@ -1526,7 +1534,7 @@ summary {
   position: fixed;
   right: 23px;
   bottom: 78px;
-  height: min(590px, 75vh);
+  height: min(590px, calc(100dvh - 104px));
   width: 375px;
   max-width: calc(100vw - 36px);
   background: var(--panel);
@@ -1554,8 +1562,11 @@ summary {
 }
 .chat-messages {
   padding: 20px;
-  overflow: auto;
-  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  flex: 1 1 auto;
+  overscroll-behavior: contain;
 }
 .chat-empty {
   text-align: center;
@@ -1580,14 +1591,47 @@ summary {
   padding: 14px;
   gap: 8px;
   border-top: 1px solid var(--line);
+  flex: 0 0 auto;
+  background: var(--panel);
 }
-.assistant form input {
+.assistant form input:not([type="file"]) {
   font-size: 12px;
+  min-width: 0;
+  flex: 1;
+}
+.assistant-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.assistant-actions button:disabled {
+  opacity: .45;
 }
 .assistant > small {
   padding: 0 16px 13px;
+  flex: 0 0 auto;
   font-size: 8px;
   color: var(--muted);
+}
+.partial-import {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.partial-import input[type="checkbox"] {
+  width: auto;
+  min-width: 16px;
+  margin-top: 3px;
+  accent-color: var(--blue);
 }
 .message {
   font-size: 12px;

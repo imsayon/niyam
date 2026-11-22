@@ -127,5 +127,6 @@ export function fixture() {
     ],
     runs: [],
     imports: [],
+    references: [],
   };
 }

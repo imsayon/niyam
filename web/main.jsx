@@ -207,6 +207,7 @@ function App() {
     [data, setData] = useState(empty),
     [revision, setRevision] = useState(0);
   const [readyFor, setReadyFor] = useState(null);
+  const [institution, setInstitution] = useState(null);
   const currentAccount = useRef(null);
   currentAccount.current = session?.account?.id;
   const workspaceVersion = useRef(null);
@@ -285,6 +286,17 @@ function App() {
       .catch((error) => notify(error.message, true))
       .finally(() => setLoading(false));
   }, [notify]);
+  useEffect(() => {
+    if (!session?.account?.id) {
+      setInstitution(null);
+      return;
+    }
+    let active = true;
+    api("/institution")
+      .then((value) => { if (active) setInstitution(value); })
+      .catch((error) => { if (active) notify(error.message, true); });
+    return () => { active = false; };
+  }, [session?.account?.id, notify]);
   useEffect(() => {
     if (session?.account?.status !== "active") return;
     refresh().catch((error) => notify(error.message, true));
@@ -469,8 +481,8 @@ function App() {
             <Building2 size={19} />
           </span>
           <div>
-            <strong>Niyam College</strong>
-            <small>Examination workspace</small>
+            <strong title={institution?.name}>{institution?.shortName || "Institution"}</strong>
+            <small title={institution?.name}>{institution?.name || "Examination workspace"}</small>
           </div>
           <Badge>{account.role}</Badge>
         </div>
@@ -639,15 +651,15 @@ function App() {
               setSession={setSession}
               theme={theme}
               setTheme={setTheme}
+              institution={institution}
+              setInstitution={setInstitution}
             />
           )}
         </main>
         <footer className="app-footer">
           <span>Niyam · Examination operations</span>
           <span>
-            {session.firebase
-              ? "ISE · Department workspace"
-              : "Examination workspace"}
+            {institution?.shortName || "Examination workspace"}
           </span>
         </footer>
       </div>
@@ -2924,6 +2936,7 @@ function Imports({
     [classification, setClassification] = useState(null),
     [filename, setFilename] = useState(""),
     [preview, setPreview] = useState(null),
+    [skipInvalid, setSkipInvalid] = useState(false),
     [parsing, setParsing] = useState(false),
     [sittingId, setSitting] = useState(""),
     [roomId, setRoom] = useState(""),
@@ -2936,7 +2949,7 @@ function Imports({
     sittingId: sittingId || sessions[0]?.id,
     roomId: roomId || data.rooms[0]?.id,
   };
-  useEffect(() => setPreview(null), [eventId, sittingId, roomId]);
+  useEffect(() => { setPreview(null); setSkipInvalid(false); }, [eventId, sittingId, roomId]);
   useEffect(() => {
     if (!incomingFile) return;
     clearFile(null);
@@ -2950,6 +2963,7 @@ function Imports({
     setParsing(true);
     setPreview(null);
     setClassification(null);
+    setSkipInvalid(false);
     setKind("");
     setText("");
     setRows([]);
@@ -3077,6 +3091,7 @@ function Imports({
               onChange={(e) => {
                 setKind(e.target.value);
                 setPreview(null);
+                setSkipInvalid(false);
               }}
             >
               <option value="">Detect from file or choose</option>
@@ -3173,6 +3188,7 @@ function Imports({
                 onChange={(e) => {
                   setJson(e.target.value);
                   setPreview(null);
+                  setSkipInvalid(false);
                 }}
               />
             </Field>
@@ -3185,6 +3201,7 @@ function Imports({
                   if (!Array.isArray(changed) || !changed.length)
                     throw Error("Enter one or more records to review.");
                   setRows(changed);
+                  setSkipInvalid(false);
                   const result = await act(() =>
                     send("/import/preview", { ...body, rows: changed }),
                   );
@@ -3225,24 +3242,35 @@ function Imports({
                 </tr>
               ))}
             </Table>
-            <button
-              className="button primary"
-              disabled={
-                busy || preview.errors.length > 0 || preview.items.length === 0
-              }
+            {preview.errors.length > 0 && preview.items.length > 0 && (
+              <label className="partial-import">
+                <input type="checkbox" checked={skipInvalid}
+                  onChange={(event) => setSkipInvalid(event.target.checked)} />
+                <span>Import {preview.items.length} valid rows and skip {preview.errors.length}
+                  {" "}invalid {preview.errors.length === 1 ? "row" : "rows"}.
+                  Review the conflicts first; skipped records will not be saved.</span>
+              </label>
+            )}
+            <button className="button primary"
+              disabled={busy || preview.items.length === 0 ||
+                (preview.errors.length > 0 && !skipInvalid)}
               onClick={async () => {
                 const result = await act(
                   () =>
                     send("/import/commit", {
                       ...body,
                       revision: preview.revision,
+                      skipInvalid,
                     }),
-                  "Import committed",
+                  skipInvalid
+                    ? `Imported ${preview.items.length} valid rows; skipped ${preview.errors.length}`
+                    : "Import committed",
                 );
                 if (result) {
                   setRows([]);
                   setJson("");
                   setPreview(null);
+                  setSkipInvalid(false);
                   setFilename("");
                   setText("");
                   setClassification(null);
@@ -3462,10 +3490,16 @@ function SettingsPage({
   setSession,
   theme,
   setTheme,
+  institution,
+  setInstitution,
   notify,
   busy,
   act,
 }) {
+  const [institutionDraft, setInstitutionDraft] = useState({ name: "", shortName: "" });
+  useEffect(() => {
+    if (institution) setInstitutionDraft(institution);
+  }, [institution?.name, institution?.shortName]);
   const [status, setStatus] = useState(null),
     [release, setRelease] = useState(null),
     [key, setKey] = useState("");
@@ -3537,6 +3571,48 @@ function SettingsPage({
         </form>
       </section>
       <div>
+        {account.role === "admin" && (
+          <section className="panel">
+            <div className="panel-title">
+              <h3>Institution</h3>
+              <Building2 size={19} />
+            </div>
+            <form
+              className="dialog-content"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                try {
+                  const saved = await send("/institution", institutionDraft, "PUT");
+                  setInstitution(saved);
+                  notify("Institution details saved");
+                } catch (error) {
+                  notify(error.message, true);
+                }
+              }}
+            >
+              <Field label="Official institution name">
+                <input
+                  required maxLength={150} value={institutionDraft.name}
+                  onChange={(event) => setInstitutionDraft((old) => ({
+                    ...old, name: event.target.value,
+                  }))}
+                />
+              </Field>
+              <Field label="Short display name">
+                <input
+                  required maxLength={32} value={institutionDraft.shortName}
+                  onChange={(event) => setInstitutionDraft((old) => ({
+                    ...old, shortName: event.target.value,
+                  }))}
+                />
+              </Field>
+              <button className="button primary">Save institution</button>
+              <p className="micro">
+                Shared by all signed-in roles. Changes are persisted in PostgreSQL.
+              </p>
+            </form>
+          </section>
+        )}
         <section className="panel">
           <div className="panel-title">
             <h3>Appearance</h3>
@@ -3636,8 +3712,23 @@ function SettingsPage({
 function Assistant({ eventId, close, onAttach }) {
   const [question, setQuestion] = useState(""),
     [messages, setMessages] = useState([]),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [loadingHistory, setLoadingHistory] = useState(true);
   const attachment = useRef(null);
+  const bottom = useRef(null);
+  useEffect(() => {
+    let active = true;
+    api("/ai/history")
+      .then((result) => { if (active) setMessages(result.messages); })
+      .catch((error) => {
+        if (active) setMessages([{ role: "error", text: error.message }]);
+      })
+      .finally(() => { if (active) setLoadingHistory(false); });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [messages, busy, loadingHistory]);
   return (
     <section className="assistant">
       <header>
@@ -3645,12 +3736,33 @@ function Assistant({ eventId, close, onAttach }) {
           <Sparkles size={18} />
           <strong>Ask Niyam</strong>
         </div>
-        <button className="icon" aria-label="Close assistant" onClick={close}>
-          <X size={18} />
-        </button>
+        <div className="assistant-actions">
+          <button
+            className="icon"
+            type="button"
+            aria-label="Clear conversation"
+            title="Clear saved conversation"
+            disabled={busy || loadingHistory || !messages.length}
+            onClick={async () => {
+              if (!window.confirm("Clear your saved Ask Niyam conversation?")) return;
+              try {
+                await api("/ai/history", { method: "DELETE" });
+                setMessages([]);
+              } catch (error) {
+                setMessages((old) => [...old, { role: "error", text: error.message }]);
+              }
+            }}
+          >
+            <Trash2 size={16} />
+          </button>
+          <button className="icon" aria-label="Close assistant" onClick={close}>
+            <X size={18} />
+          </button>
+        </div>
       </header>
       <div className="chat-messages">
-        {!messages.length && (
+        {loadingHistory && <p className="micro">Loading your conversation…</p>}
+        {!messages.length && !loadingHistory && (
           <div className="chat-empty">
             <Sparkles size={30} />
             <h3>Your examination assistant</h3>
@@ -3666,11 +3778,12 @@ function Assistant({ eventId, close, onAttach }) {
           </p>
         ))}
         {busy && <p className="micro">Checking authorized records…</p>}
+        <span ref={bottom} />
       </div>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
-          if (!question.trim() || busy) return;
+          if (!question.trim() || busy || loadingHistory) return;
           const text = question;
           setQuestion("");
           setMessages((old) => [...old, { role: "user", text }]);
@@ -3718,9 +3831,10 @@ function Assistant({ eventId, close, onAttach }) {
           onChange={(e) => setQuestion(e.target.value)}
           placeholder="Ask about your examination…"
           maxLength={600}
+          disabled={busy || loadingHistory}
           aria-label="Message"
         />
-        <button className="icon" disabled={busy} aria-label="Send message">
+        <button className="icon" disabled={busy || loadingHistory || !question.trim()} aria-label="Send message">
           <Send size={18} />
         </button>
       </form>
