@@ -1,4 +1,5 @@
-import PDFDocument from "pdfkit";
+import { writeReportPdf } from "./report-pdf.js";
+import { institutionConfiguration } from "./institution.js";
 import { z } from "zod";
 import { requireRole } from "./accounts.js";
 import { scoped } from "./workspace.js";
@@ -361,23 +362,7 @@ export function outputApi(app, db) {
         .send(
           [headers, ...rows].map((row) => row.map(safe).join(",")).join("\r\n"),
         );
-    const pdf = new PDFDocument({ size: "A4", margin: 44 });
-    pdf.pipe(res);
-    pdf.fillColor("#152f52").fontSize(24).text("Niyam");
-    pdf.fontSize(16).text(event.name + " / " + kind);
-    pdf
-      .fontSize(9)
-      .text(
-        "Plan " + run.id + " · " + (run.publishedAt ? "Published" : "Draft"),
-      );
-    pdf.moveDown();
-    for (const row of rows) {
-      pdf
-        .fontSize(10)
-        .fillColor("#152f52")
-        .text(row.map((cell, i) => headers[i] + ": " + cell).join("   •   "))
-        .moveDown(0.6);
-    }
-    pdf.end();
+    const institution = await institutionConfiguration(db);
+    writeReportPdf(res, { institution, event, kind, run, headers, rows });
   });
 }
