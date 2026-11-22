@@ -2430,3 +2430,9 @@ summary {
 .ai-confirm-label input { width: 100%; }
 .ai-proposal-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .ai-proposal-actions .button { width: auto; }
+
+.ai-knowledge { display: flex; justify-content: space-between; flex-wrap: wrap;
+  align-items: center; gap: 10px; font-size: 12px; color: var(--muted);
+  border-top: 1px solid var(--line); padding: 8px 12px; }
+.ai-knowledge span { overflow-wrap: anywhere; }
+.ai-import-link { align-self: flex-start; padding: 4px 12px; }

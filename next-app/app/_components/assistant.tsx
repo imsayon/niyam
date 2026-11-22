@@ -28,8 +28,40 @@ export function Assistant({ eventId, close, onAttach, onChanged }: {
     [loadingHistory, setLoadingHistory] = useState(true);
   const [proposal, setProposal] = useState<ProposedAction | null>(null);
   const [confirmation, setConfirmation] = useState("");
+  const [knowledge, setKnowledge] = useState<string[]>([]);
+  const [lastFile, setLastFile] = useState<File | null>(null);
   const attachment = useRef<HTMLInputElement>(null);
   const bottom = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!onAttach) return;
+    api<{ documents: { fileName: string }[] }>("/ai/documents")
+      .then(value => setKnowledge(value.documents.map(file => file.fileName)))
+      .catch(() => { /* A pending database migration must not break chat. */ });
+  }, []);
+  async function attachDocument(file: File) {
+    setBusy(true);
+    try {
+      if (file.size > 10 * 1024 * 1024) throw Error("Use documents smaller than 10 MB.");
+      const response = await fetch("/api/ai/documents", {
+        method: "POST", credentials: "same-origin",
+        headers: {
+          "content-type": "application/octet-stream",
+          "x-document-name": encodeURIComponent(file.name),
+        },
+        body: file,
+      });
+      const data: { fileName?: string; summary?: string; error?: string } =
+        await response.json();
+      if (!response.ok) throw Error(data.error || "Document indexing failed.");
+      setKnowledge(old => [data.fileName || file.name, ...old.filter(name => name !== file.name)]);
+      setLastFile(file);
+      setMessages(old => [...old, { role: "assistant", text:
+        (data.summary || "Document indexed.") +
+        " You can now ask questions about its extracted content." }]);
+    } catch (error) {
+      setMessages(old => [...old, { role: "error", text: errorMessage(error) }]);
+    } finally { setBusy(false); }
+  }
   useEffect(() => {
     let active = true;
     api<{ messages: SavedMessage[] }>("/ai/history")
@@ -174,13 +206,14 @@ export function Assistant({ eventId, close, onAttach, onChanged }: {
               hidden
               onChange={(event) => {
                 const file = event.currentTarget.files?.[0];
-                if (file) onAttach(file);
+                event.currentTarget.value = "";
+                if (file) void attachDocument(file);
               }}
             />
             <button
               type="button"
               className="icon"
-              aria-label="Attach a document"
+              aria-label="Attach knowledge document"
               onClick={() => attachment.current?.click()}
             >
               <Paperclip size={17} />
@@ -199,6 +232,25 @@ export function Assistant({ eventId, close, onAttach, onChanged }: {
           <Send size={18} />
         </button>
       </form>
+      {onAttach && knowledge.length > 0 && (
+        <div className="ai-knowledge" aria-live="polite">
+          <span>Saved knowledge: {knowledge.slice(0, 3).join(", ")}
+            {knowledge.length > 3 ? " (+" + (knowledge.length - 3) + ")" : ""}</span>
+          <button type="button" className="text-link" disabled={busy}
+            onClick={async () => {
+              if (!window.confirm("Delete all attached document text saved for this administrator?")) return;
+              try {
+                await api("/ai/documents", { method: "DELETE" });
+                setKnowledge([]);
+                setLastFile(null);
+              } catch (error) { setMessages(old => [...old, { role: "error", text: errorMessage(error) }]); }
+            }}>Clear knowledge</button>
+        </div>
+      )}
+      {onAttach && lastFile && (
+        <button type="button" className="text-link ai-import-link" disabled={busy}
+          onClick={() => onAttach(lastFile)}>Review this file for student roster import</button>
+      )}
       <small>Answers use authorized records. Administrative changes require review and confirmation.</small>
     </section>
   );
