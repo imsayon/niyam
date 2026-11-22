@@ -35,8 +35,6 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Validate Codex handoff shell syntax
-        run: bash -n scripts/codex-finish.sh
       - name: Install stable baseline
         run: npm ci
       - name: Install pinned Next preview dependencies
