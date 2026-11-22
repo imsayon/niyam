@@ -117,6 +117,7 @@ export async function verifyContent({ base, adminHeaders, studentCookie }) {
 
   // LLM proposals never write on their own. The admin must approve a
   // signed token. A student cannot replay the token or execute the action.
+  await sleep(850); // Respect the admin AI request cooldown after extraction.
   const proposed = await json("/ai/ask", { body: {
     question: "Add student named AI Test Candidate with USN AITEST001 in ISE department, semester 3, email aitest@example.edu",
   } });
