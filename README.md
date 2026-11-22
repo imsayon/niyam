@@ -23,6 +23,20 @@ The seed command generates random demo passwords and a server encryption key und
 
 For frontend development, run `npm run dev` in a second terminal. Set `DEV_ORIGIN=http://localhost:5173` in the API environment to allow development requests. The dev server proxies the API to port 4317.
 
+## Firebase emulator
+
+The separate Niyam Firebase project has project ID `proctor-flow` and uses Spark. Run the Firebase version against the loopback Emulator Suite under `demo-niyam-local`. The public demo currently runs on Render.
+
+With Node 22 LTS and Java 21 or later, run `npm ci`, `npm run build:firebase`, and `npm run emulators`. In a second terminal, run `npm run seed:firebase`, then open http://127.0.0.1:5000. The seed provisions the ISE demo admin and adds synthetic records to an empty workspace. The login is for the loopback demo only.
+
+Run `npm run test:firebase` with those emulator ports free. It starts its own Auth, Firestore, and Functions emulators. Keep real documents and emulator exports local. The shipped Firestore rules are for the emulator. Preserve legacy rules when preparing any future hosted migration.
+
+### Review uploaded records
+
+Use **Import records** or the attachment button in **Ask Niyam**. The import review detects supported records from file contents, including structured Word tables. A weekly class timetable becomes course and teaching references. A dated lab roster becomes historical student references. You can search saved references on the import page after committing. PDF or plain-text documents without a recognized table need a manual mapping.
+
+For an exam draft, use the **Official exam timetable** CSV template with the office's confirmed date and time for each paper. Give papers sharing a room and time the same sitting name. Select the event and exam room in import review, then enroll the current candidates for each paper and confirm the room layouts and faculty availability before generating allocation. Review the draft seating, timetable, and duty exports before publishing.
+
 ## Implemented workflows
 
 - Session authentication with scrypt password hashes, hashed opaque session tokens, HTTP-only cookies, origin checks, login throttling, and server role enforcement.
@@ -32,7 +46,7 @@ For frontend development, run `npm run dev` in a second terminal. Set `DEV_ORIGI
 - Explicit lifecycle through draft, configured, published, completed, and archived. Published assignments remain immutable until a new reviewed revision is published.
 - Deterministic seating by physical bench position, configurable semester/paper/department selectors, accessible and blocked seats, optional same-paper adjacency restrictions, room and student conflict checks.
 - Duty allocation with faculty availability, approved leave and buffers, overlap checks, per-event duty caps, workload ranking, and room repetition preferences. Search uses bounded backtracking and reports infeasible or exhausted searches explicitly. It does not certify globally optimal fairness.
-- CSV/XLS/XLSX parsing, text PDF extraction, Gemini entity extraction, editable review, validation, duplicate detection, and atomic imports of up to 250 rows. PDF extraction is limited to 30 pages and 25,000 characters. Scanned PDFs require OCR before import.
+- CSV/XLS/XLSX parsing, Word table extraction, searchable PDF text, editable review, duplicate detection, and atomic imports of up to 250 rows. PDF extraction is limited to 30 pages and 25,000 characters. Scanned PDFs require OCR before import.
 - Actual CSV/PDF timetable, seat, and duty downloads. Role restrictions apply to exports.
 - Server-side Gemini chat over authorized records, encrypted BYOK configuration and connection testing, and explicit provider error states. Add your key in Settings. The default is [Gemini 3.1 Flash-Lite](https://aistudio.google.com/docs/models/gemini-3.1-flash-lite). AI chat has read-only access. It does not commit operational changes.
 - Light and Dark appearance, responsive role portals, a keyboard-accessible room editor, and a tabular seating view.

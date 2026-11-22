@@ -38,7 +38,7 @@ export const defaultPolicy = {
   leaveBuffer: 0,
   avoidRepeat: true,
 };
-const policySchema = z.object({
+export const policySchema = z.object({
   patterns: z
     .record(
       z.string().regex(/^([1-9]|[1-5][0-9]|60)$/),
@@ -98,7 +98,7 @@ const leave = z.object({
   to: date,
   reason: z.string().trim().min(1).max(400),
 });
-const schemas = {
+export const schemas = {
   events: z.object({ name: label, cycle: label }),
   rooms: z.object({
     name: label,
@@ -116,12 +116,37 @@ const schemas = {
     accessible: z.boolean(),
   }),
   leaves: leave,
+  references: z.object({
+    type: z.enum(["course", "teaching", "historical-lab-batch"]),
+    term: z.string().trim().max(30).optional(),
+    year: z.string().trim().max(20).optional(),
+    semester: semester.optional(),
+    section: z.string().trim().max(40).optional(),
+    batch: z.string().trim().max(40).optional(),
+    courseCode: z.string().trim().max(40).optional(),
+    courseName: z.string().trim().max(200).optional(),
+    facultySuggestion: z.string().trim().max(150).optional(),
+    studentName: z.string().trim().max(150).optional(),
+    studentId: z.string().trim().max(40).optional(),
+    day: z.string().trim().max(30).optional(),
+    period: z.string().trim().max(40).optional(),
+    entry: z.string().trim().max(300).optional(),
+    roomLabel: z.string().trim().max(80).optional(),
+    historical: z.boolean().default(false),
+    candidatePool: z.boolean().default(false),
+    source: z.object({
+      fileName: z.string().trim().min(1).max(180),
+      table: z.number().int().min(1).max(256),
+      row: z.number().int().min(1).max(10000),
+      column: z.number().int().min(1).max(100).optional(),
+    }),
+  }),
 };
 
-function fail(message, status = 422) {
+export function fail(message, status = 422) {
   throw new HttpError(status, message);
 }
-function get(rows, key) {
+export function get(rows, key) {
   const value = rows.find((row) => row.id === key);
   if (!value) fail("The requested record no longer exists.", 404);
   return value;
@@ -129,13 +154,19 @@ function get(rows, key) {
 function unique(items) {
   return new Set(items).size === items.length;
 }
-function editable(data, eventId) {
+export function editable(data, eventId) {
   const event = get(data.events, eventId);
   if (["completed", "archived"].includes(event.status))
     fail("This event is closed.");
   return event;
 }
-function validate(data, kind, row) {
+export function validate(data, kind, row) {
+  if (kind === "references" && row.type === "historical-lab-batch") {
+    if (!row.studentId || !row.studentName || !row.year || !row.batch)
+      fail("Historical batch rows need an identifier, name, year, and batch.");
+    row.historical = true;
+    row.candidatePool = false;
+  }
   if (
     ["students", "faculty"].includes(kind) &&
     data[kind].some((other) => other.id !== row.id && other.code === row.code)
@@ -198,14 +229,14 @@ function validate(data, kind, row) {
       fail("Leave end date must fall on or after the start date.");
   }
 }
-function update(data, kind, row) {
+export function update(data, kind, row) {
   validate(data, kind, row);
   const index = data[kind].findIndex((item) => item.id === row.id);
   if (index === -1) data[kind].push(row);
   else data[kind][index] = row;
   return row.id;
 }
-function remove(data, kind, row) {
+export function remove(data, kind, row) {
   const linked = {
     events: () =>
       data.sittings.some((s) => s.eventId === row.id) || row.status !== "draft",
@@ -229,6 +260,7 @@ function remove(data, kind, row) {
       return false;
     },
     leaves: () => row.status !== "pending",
+    references: () => false,
   };
   if (linked[kind]())
     fail(
@@ -302,37 +334,202 @@ export function scoped(data, account) {
   };
 }
 
-const ingestKinds = z.enum(["students", "faculty", "enrollments", "sittings"]);
+const importScalar = z.union([
+  z.string().max(300),
+  z.number(),
+  z.boolean(),
+  z.null(),
+]);
+const sourceSchema = schemas.references.shape.source;
+const importRow = z.union([
+  z.record(z.string().max(80), importScalar),
+  z.object({
+    type: z.enum(["course", "teaching", "historical-lab-batch"]),
+    term: z.string().max(30).optional(),
+    year: z.string().max(20).optional(),
+    semester: z.union([z.string().max(10), z.number()]).optional(),
+    section: z.string().max(40).optional(),
+    batch: z.string().max(40).optional(),
+    courseCode: z.string().max(40).optional(),
+    courseName: z.string().max(200).optional(),
+    facultySuggestion: z.string().max(150).optional(),
+    studentName: z.string().max(150).optional(),
+    studentId: z.string().max(40).optional(),
+    day: z.string().max(30).optional(),
+    period: z.string().max(40).optional(),
+    entry: z.string().max(300).optional(),
+    roomLabel: z.string().max(80).optional(),
+    historical: z.boolean().optional(),
+    candidatePool: z.boolean().optional(),
+    source: sourceSchema,
+  }),
+]);
+const ingestKinds = z.enum([
+  "students",
+  "faculty",
+  "enrollments",
+  "sittings",
+  "references",
+]);
 const importSchema = z.object({
   revision,
   kind: ingestKinds,
-  rows: z
-    .array(
-      z.record(
-        z.string(),
-        z.union([z.string().max(300), z.number(), z.boolean(), z.null()]),
-      ),
-    )
-    .min(1)
-    .max(250),
+  rows: z.array(importRow).min(1).max(250),
   eventId: id.optional(),
   sittingId: id.optional(),
   roomId: id.optional(),
 });
-function importRows(data, body) {
+function importKey(kind, row) {
+  if (kind !== "references") return null;
+  if (row.type === "historical-lab-batch")
+    return [row.type, row.year, row.studentId?.toUpperCase()].join(":");
+  return [
+    row.type,
+    row.term,
+    row.semester,
+    row.section,
+    row.source.fileName,
+    row.source.table,
+    row.source.row,
+    row.source.column,
+  ].join(":");
+}
+
+function importFields(raw) {
+  return Object.fromEntries(
+    Object.entries(raw).map(([key, value]) => [
+      key
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, ""),
+      String(value ?? "").trim(),
+    ]),
+  );
+}
+
+export function importRows(data, body) {
   const items = [];
   const errors = [];
   const original = structuredClone(data);
+  if (body.kind === "sittings") {
+    const groups = new Map();
+    for (const [index, raw] of body.rows.entries()) {
+      try {
+        const found = importFields(raw);
+        if (!body.eventId || !body.roomId)
+          fail("Choose an examination event and reviewed room layout.");
+        const paper = {
+          id: randomUUID(),
+          code: found.code || found.paper || found.papercode,
+          name: found.subject || found.papername || found.name,
+          semester: found.semester,
+          department: found.department,
+        };
+        const parsed = sitting.parse({
+          eventId: body.eventId,
+          name:
+            found.sitting ||
+            found.sittingname ||
+            found.name ||
+            found.subject ||
+            found.papername,
+          date: found.date || found.examdate,
+          start: found.start || found.starttime,
+          end: found.end || found.endtime,
+          status: "scheduled",
+          roomIds: [body.roomId],
+          papers: [paper],
+        });
+        const key = [
+          parsed.eventId,
+          parsed.name,
+          parsed.date,
+          parsed.start,
+          parsed.end,
+          parsed.roomIds.join(","),
+        ].join("|");
+        const group = groups.get(key) || {
+          ...parsed,
+          papers: [],
+          row: index + 2,
+        };
+        if (group.papers.some((item) => item.code === parsed.papers[0].code))
+          fail("Duplicate paper row in this sitting.");
+        group.papers.push(parsed.papers[0]);
+        groups.set(key, group);
+      } catch (error) {
+        errors.push({
+          row: index + 2,
+          message:
+            error instanceof z.ZodError
+              ? error.issues
+                  .map((issue) => issue.path.join(".") + " " + issue.message)
+                  .join(", ")
+              : error.message,
+        });
+      }
+    }
+    for (const group of groups.values()) {
+      try {
+        const existing = original.sittings.find(
+          (row) =>
+            row.eventId === group.eventId &&
+            row.name === group.name &&
+            row.date === group.date &&
+            row.start === group.start &&
+            row.end === group.end &&
+            isDeepStrictEqual(row.roomIds, group.roomIds),
+        );
+        const existingCodes = new Set(
+          (existing?.papers || []).map((paper) => paper.code),
+        );
+        if (group.papers.some((paper) => existingCodes.has(paper.code)))
+          fail("A paper already exists in this sitting.");
+        const record = {
+          ...group,
+          id: existing?.id || randomUUID(),
+          papers: [...(existing?.papers || []), ...group.papers],
+        };
+        delete record.row;
+        validate(data, "sittings", record);
+        items.push({
+          row: group.row,
+          action: existing ? "update" : "create",
+          record,
+        });
+      } catch (error) {
+        errors.push({ row: group.row, message: error.message });
+      }
+    }
+    return { items, errors };
+  }
   for (const [index, raw] of body.rows.entries()) {
     try {
-      const found = {};
-      for (const [key, value] of Object.entries(raw))
-        found[key.trim().toLowerCase()] = String(value ?? "").trim();
+      if (body.kind === "references") {
+        const next = schemas.references.parse(raw);
+        const key = importKey(body.kind, next);
+        const existing = (original.references || []).find(
+          (item) => importKey(body.kind, item) === key,
+        );
+        if (items.some((item) => importKey(body.kind, item.record) === key))
+          fail(
+            "Duplicate identifier in this document; review the duplicate row.",
+          );
+        const record = { ...next, id: existing?.id || randomUUID() };
+        validate(data, body.kind, record);
+        items.push({
+          row: raw.source.row,
+          action: existing ? "update" : "create",
+          record,
+        });
+        continue;
+      }
+      const found = importFields(raw);
       let next;
       if (body.kind === "students")
         next = student.parse({
           name: found.name,
-          code: found.code || found.usn,
+          code: found.code || found.usn || found.studentid || found.candidateid,
           email: found.email || "",
           department: found.department || found.branch,
           semester: found.semester,
@@ -340,7 +537,7 @@ function importRows(data, body) {
       if (body.kind === "faculty")
         next = faculty.parse({
           name: found.name,
-          code: found.code || found.employeeid,
+          code: found.code || found.employeeid || found.facultyid,
           email: found.email || "",
           department: found.department || found.branch,
           available: found.available !== "false",
@@ -348,10 +545,23 @@ function importRows(data, body) {
       if (body.kind === "enrollments") {
         const block = get(data.sittings, body.sittingId);
         const person = data.students.find(
-          (person) => person.code === found.code?.toUpperCase(),
+          (person) =>
+            person.code ===
+            (
+              found.code ||
+              found.usn ||
+              found.studentid ||
+              found.candidateid
+            )?.toUpperCase(),
         );
         const examination = block.papers.find(
-          (paper) => paper.code === found.paper?.toUpperCase(),
+          (paper) =>
+            paper.code ===
+            (
+              found.paper ||
+              found.papercode ||
+              found.subjectcode
+            )?.toUpperCase(),
         );
         if (!person || !examination) fail("Check candidate ID and paper code.");
         next = {
@@ -361,36 +571,11 @@ function importRows(data, body) {
           accessible: /^(yes|true|1)$/i.test(found.accessible),
         };
       }
-      if (body.kind === "sittings") {
-        next = sitting.parse({
-          eventId: body.eventId,
-          name: found.name || found.subject,
-          date: found.date,
-          start: found.start,
-          end: found.end,
-          status: "scheduled",
-          roomIds: [body.roomId],
-          papers: [
-            {
-              id: "paper-1",
-              code: found.code,
-              name: found.subject,
-              semester: found.semester,
-              department: found.department,
-            },
-          ],
-        });
-      }
       const matches = (row) =>
         next.code
           ? row.code === next.code
-          : body.kind === "enrollments"
-            ? row.sittingId === next.sittingId &&
-              row.studentId === next.studentId
-            : row.eventId === next.eventId &&
-              row.date === next.date &&
-              row.start === next.start &&
-              row.papers[0]?.code === next.papers[0].code;
+          : row.sittingId === next.sittingId &&
+            row.studentId === next.studentId;
       const existing = original[body.kind].find(matches);
       if (items.some((item) => matches(item.record)))
         fail("Duplicate row in this import.");
@@ -727,4 +912,154 @@ export function workspaceApi(app, db) {
       ),
     );
   });
+}
+
+export function allocationReadiness(data, eventId) {
+  const issues = [];
+  const event = data.events.find((item) => item.id === eventId);
+  if (!event)
+    return [{ code: "missing-event", message: "The event is unavailable." }];
+  const sittings = data.sittings.filter(
+    (item) => item.eventId === eventId && item.status === "scheduled",
+  );
+  if (!sittings.length)
+    issues.push({
+      code: "missing-timetable",
+      message: "Add and approve at least one exam sitting.",
+    });
+  if (!data.students.length)
+    issues.push({
+      code: "missing-roster",
+      message: "Add the current student roster.",
+    });
+  if (!data.faculty.length)
+    issues.push({
+      code: "missing-invigilators",
+      message: "Add the current invigilator roster.",
+    });
+  const overlaps = (a, b) =>
+    a.date === b.date && a.start < b.end && b.start < a.end;
+  for (const sitting of sittings) {
+    const enrollments = data.enrollments.filter(
+      (row) => row.sittingId === sitting.id,
+    );
+    if (!enrollments.length)
+      issues.push({
+        code: "missing-enrollment",
+        sittingId: sitting.id,
+        message: `${sitting.name}: add exam paper enrollment.`,
+      });
+    for (const paper of sitting.papers) {
+      const paperRows = enrollments.filter((row) => row.paperId === paper.id);
+      if (!paperRows.length)
+        issues.push({
+          code: "missing-paper-enrollment",
+          sittingId: sitting.id,
+          paperId: paper.id,
+          message: `${paper.code}: add the current exam paper enrollment.`,
+        });
+      for (const row of paperRows) {
+        const candidate = data.students.find(
+          (item) => item.id === row.studentId,
+        );
+        if (
+          !candidate ||
+          candidate.semester !== paper.semester ||
+          candidate.department !== paper.department
+        )
+          issues.push({
+            code: "invalid-enrollment",
+            sittingId: sitting.id,
+            paperId: paper.id,
+            message: `${paper.code}: enrollment contains a candidate outside the current paper roster.`,
+          });
+      }
+    }
+    const rooms = sitting.roomIds
+      .map((roomId) => data.rooms.find((room) => room.id === roomId))
+      .filter(Boolean);
+    if (rooms.length !== sitting.roomIds.length || !rooms.length) {
+      issues.push({
+        code: "missing-room-layout",
+        sittingId: sitting.id,
+        message: `${sitting.name}: assign rooms with reviewed layouts.`,
+      });
+    } else {
+      const capacity = rooms.reduce(
+        (sum, room) => sum + room.cells.filter((cell) => !cell.blocked).length,
+        0,
+      );
+      const accessibleSeats = rooms.reduce(
+        (sum, room) =>
+          sum +
+          room.cells.filter((cell) => !cell.blocked && cell.accessible).length,
+        0,
+      );
+      if (capacity < enrollments.length)
+        issues.push({
+          code: "insufficient-capacity",
+          sittingId: sitting.id,
+          message: `${sitting.name}: room capacity is below the enrollment count.`,
+        });
+      if (accessibleSeats < enrollments.filter((row) => row.accessible).length)
+        issues.push({
+          code: "insufficient-accessible-capacity",
+          sittingId: sitting.id,
+          message: `${sitting.name}: accessible room capacity is below the requested count.`,
+        });
+      const invigilators = rooms.reduce(
+        (sum, room) => sum + room.invigilators,
+        0,
+      );
+      const available = data.faculty.filter(
+        (person) =>
+          person.available &&
+          !data.leaves.some(
+            (leave) =>
+              leave.facultyId === person.id &&
+              leave.status === "approved" &&
+              leave.from <= sitting.date &&
+              leave.to >= sitting.date,
+          ),
+      ).length;
+      if (available < invigilators)
+        issues.push({
+          code: "insufficient-invigilators",
+          sittingId: sitting.id,
+          message: `${sitting.name}: not enough available invigilators for the selected rooms.`,
+        });
+    }
+    const students = new Set();
+    for (const row of enrollments) {
+      if (students.has(row.studentId))
+        issues.push({
+          code: "simultaneous-paper-conflict",
+          sittingId: sitting.id,
+          message: `${sitting.name}: a candidate is enrolled in multiple simultaneous papers.`,
+        });
+      students.add(row.studentId);
+    }
+  }
+  for (let i = 0; i < sittings.length; i++)
+    for (let j = i + 1; j < sittings.length; j++) {
+      const a = sittings[i],
+        b = sittings[j];
+      if (!overlaps(a, b)) continue;
+      const left = new Set(
+        data.enrollments
+          .filter((row) => row.sittingId === a.id)
+          .map((row) => row.studentId),
+      );
+      if (
+        data.enrollments.some(
+          (row) => row.sittingId === b.id && left.has(row.studentId),
+        )
+      )
+        issues.push({
+          code: "simultaneous-paper-conflict",
+          sittingId: b.id,
+          message: `${a.name} and ${b.name}: a candidate has overlapping papers.`,
+        });
+    }
+  return issues;
 }

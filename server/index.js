@@ -7,6 +7,7 @@ import { database, setup } from "./store.js";
 import { accountApi } from "./accounts.js";
 import { workspaceApi } from "./workspace.js";
 import { outputApi } from "./outputs.js";
+import { documentApi } from "./documents.js";
 import { seedDemo } from "../scripts/seed.js";
 
 export function application(db) {
@@ -48,6 +49,7 @@ export function application(db) {
     });
   });
   accountApi(app, db, origin);
+  documentApi(app);
   workspaceApi(app, db);
   outputApi(app, db);
   app.use("/api", (req, res) =>
@@ -106,7 +108,7 @@ if (process.argv[1]?.endsWith("/server/index.js")) {
       ),
     );
   }
-  const port = Number(process.env.PORT || 3000);
+  const port = Number(process.env.PORT || process.env.NIYAM_PORT || 3000);
   const server = application(db).listen(
     port,
     process.env.RENDER ? "0.0.0.0" : "127.0.0.1",

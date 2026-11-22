@@ -6,3 +6,6 @@ release/
 !.env.example
 local/
 playwright-report/
+firebase-debug*.log
+firestore-debug.log
+firebase-export-*/

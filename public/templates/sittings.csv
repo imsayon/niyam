@@ -1,2 +1,3 @@
-name,code,subject,date,start,end,semester,department
-Afternoon sitting,CS302,Digital Systems,2026-11-20,14:00,16:00,3,CSE
+sitting,code,subject,date,start,end,semester,department
+Sample afternoon sitting,IS302,Sample Paper A,2026-11-20,14:00,16:00,3,ISE
+Sample afternoon sitting,IS702,Sample Paper B,2026-11-20,14:00,16:00,7,ISE

@@ -48,7 +48,8 @@ export async function setup(db) {
       action text NOT NULL,
       target text NOT NULL
     );
-    INSERT INTO niyam_workspace(data) VALUES ('{"events":[],"sittings":[],"rooms":[],"faculty":[],"students":[],"enrollments":[],"leaves":[],"runs":[],"imports":[]}') ON CONFLICT DO NOTHING;
+    INSERT INTO niyam_workspace(data) VALUES ('{"events":[],"sittings":[],"rooms":[],"faculty":[],"students":[],"enrollments":[],"leaves":[],"runs":[],"imports":[],"references":[]}') ON CONFLICT DO NOTHING;
+    UPDATE niyam_workspace SET data=jsonb_set(data,'{references}','[]'::jsonb,true) WHERE NOT (data ? 'references');
   `);
 }
 
@@ -79,6 +80,7 @@ export async function snapshot(db) {
   const {
     rows: [row],
   } = await db.query("SELECT revision, data FROM niyam_workspace WHERE id");
+  if (!row.data.references) row.data.references = [];
   return row;
 }
 

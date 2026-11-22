@@ -35,6 +35,7 @@ import {
   Pencil,
   FileText,
   Clock,
+  Paperclip,
 } from "lucide-react";
 import "@fontsource-variable/manrope";
 import "@fontsource-variable/dm-sans";
@@ -196,6 +197,8 @@ function App() {
   const [readyFor, setReadyFor] = useState(null);
   const currentAccount = useRef(null);
   currentAccount.current = session?.account?.id;
+  const workspaceVersion = useRef(null);
+  const [importFile, setImportFile] = useState(null);
   const [page, setPage] = useState("overview"),
     [eventId, setEventId] = useState(""),
     [modal, setModalState] = useState(null),
@@ -224,10 +227,25 @@ function App() {
   }, [notice]);
   const refresh = useCallback(async () => {
     const requestedFor = currentAccount.current;
-    const row = await api("/workspace");
+    const previous = workspaceVersion.current;
+    const since =
+      previous?.account === requestedFor ? previous?.marker : undefined;
+    const row = await api(
+      "/workspace" + (since === undefined ? "" : "?since=" + since),
+    );
     if (requestedFor === currentAccount.current) {
-      setData(row.data);
-      setRevision(row.revision);
+      const marker = workspaceVersion.current;
+      if (
+        !row.unchanged &&
+        !(marker?.account === requestedFor && marker.marker > row.marker)
+      ) {
+        setData(row.data);
+        setRevision(row.revision);
+        workspaceVersion.current = {
+          account: requestedFor,
+          marker: row.marker,
+        };
+      }
       setConnected(true);
       setReadyFor(requestedFor);
     }
@@ -262,6 +280,7 @@ function App() {
   }, [session?.account?.id]);
   useEffect(() => {
     const expired = () => {
+      workspaceVersion.current = null;
       setSession((old) => ({ ...old, account: null }));
       setReadyFor(null);
       setData(empty);
@@ -495,6 +514,7 @@ function App() {
               aria-label="Sign out"
               onClick={async () => {
                 await api("/session", { method: "DELETE" });
+                workspaceVersion.current = null;
                 setSession({ ...session, account: null });
                 setData(empty);
                 setReadyFor(null);
@@ -557,7 +577,13 @@ function App() {
             <Directory {...props} kind={page} />
           )}
           {page === "leaves" && <Leaves {...props} />}
-          {page === "imports" && <Imports {...props} />}
+          {page === "imports" && (
+            <Imports
+              {...props}
+              incomingFile={importFile}
+              clearFile={setImportFile}
+            />
+          )}
           {page === "reports" && <Reports {...props} />}
           {page === "access" && <Access {...props} />}
           {page === "audit" && <Audit notify={notify} />}
@@ -572,7 +598,11 @@ function App() {
         </main>
         <footer className="app-footer">
           <span>Niyam · Examination operations</span>
-          <span>Evaluation workspace · Synthetic records</span>
+          <span>
+            {session.firebase
+              ? "ISE · Department workspace"
+              : "Evaluation workspace · Synthetic records"}
+          </span>
         </footer>
       </div>
       <button
@@ -583,7 +613,21 @@ function App() {
         <Sparkles size={19} />
         <span>Ask Niyam</span>
       </button>
-      {ai && <Assistant eventId={eventId} close={() => setAi(false)} />}
+      {ai && (
+        <Assistant
+          eventId={eventId}
+          close={() => setAi(false)}
+          onAttach={
+            account.role === "admin"
+              ? (file) => {
+                  setImportFile(file);
+                  setAi(false);
+                  go("imports");
+                }
+              : undefined
+          }
+        />
+      )}
       {modal && (
         <Dialog
           title={
@@ -604,6 +648,7 @@ function App() {
           {modal.type === "sitting" && (
             <SittingForm
               data={data}
+              department={session.firebase ? "ISE" : undefined}
               eventId={eventId}
               row={modal.row}
               save={(record) => save("sittings", record, modal.row?.id)}
@@ -620,6 +665,7 @@ function App() {
           {["students", "faculty"].includes(modal.type) && (
             <DirectoryForm
               kind={modal.type}
+              department={session.firebase ? "ISE" : undefined}
               row={modal.row}
               save={(record) => save(modal.type, record, modal.row?.id)}
               busy={busy}
@@ -743,8 +789,18 @@ function Login({ session, login, notify, theme, setTheme }) {
   async function signInWithGoogle() {
     setBusy(true);
     try {
-      const { url } = await send("/session/google", { role });
-      location.assign(url);
+      if (session.firebase) {
+        const { withFirebaseIdentity } = await import("./firebase-login.js");
+        login({
+          ...session,
+          ...(await withFirebaseIdentity(role, {}, (value) =>
+            send("/session", value),
+          )),
+        });
+      } else {
+        const { url } = await send("/session/google", { role });
+        location.assign(url);
+      }
     } catch (error) {
       notify(error.message, true);
       setBusy(false);
@@ -756,9 +812,18 @@ function Login({ session, login, notify, theme, setTheme }) {
     setBusy(true);
     const body = Object.fromEntries(new FormData(event.currentTarget));
     try {
-      if (mode === "login")
-        login({ ...session, ...(await send("/session", { ...body, role })) });
-      else if (mode === "register") {
+      if (mode === "login") {
+        if (session?.firebase) {
+          const { withFirebaseIdentity } = await import("./firebase-login.js");
+          login({
+            ...session,
+            ...(await withFirebaseIdentity(role, body, (value) =>
+              send("/session", value),
+            )),
+          });
+        } else
+          login({ ...session, ...(await send("/session", { ...body, role })) });
+      } else if (mode === "register") {
         await send("/register", body);
         notify("Check your inbox to verify your email. Sign in to continue.");
         setMode("login");
@@ -1534,7 +1599,7 @@ function EventForm({ row, save, busy }) {
     </form>
   );
 }
-function SittingForm({ data, eventId, row, save, busy }) {
+function SittingForm({ data, eventId, row, save, busy, department = "CSE" }) {
   const [papers, setPapers] = useState(
     row?.papers || [
       {
@@ -1542,7 +1607,7 @@ function SittingForm({ data, eventId, row, save, busy }) {
         code: "",
         name: "",
         semester: 3,
-        department: "CSE",
+        department,
       },
     ],
   );
@@ -1666,7 +1731,7 @@ function SittingForm({ data, eventId, row, save, busy }) {
               code: "",
               name: "",
               semester: 3,
-              department: "CSE",
+              department,
             },
           ])
         }
@@ -1789,7 +1854,7 @@ function Directory({ kind, data, setModal, drop, sessions }) {
     </section>
   );
 }
-function DirectoryForm({ kind, row, save, busy }) {
+function DirectoryForm({ kind, row, save, busy, department }) {
   return (
     <form
       className="dialog-content"
@@ -1815,7 +1880,9 @@ function DirectoryForm({ kind, row, save, busy }) {
             <input
               name={key}
               type={key === "email" ? "email" : "text"}
-              defaultValue={row?.[key] || ""}
+              defaultValue={
+                row?.[key] || (key === "department" ? department : "") || ""
+              }
               required={key !== "email"}
               maxLength={key === "email" ? 254 : 100}
             />
@@ -2338,10 +2405,14 @@ function Allocation({
                 <strong>
                   {status.status === "timed_out"
                     ? "Search limit reached"
-                    : "Arrangement infeasible"}
+                    : status.status === "needs_review"
+                      ? "Review the exam inputs"
+                      : "Arrangement infeasible"}
                 </strong>
-                {status.issues.map((issue) => (
-                  <p key={issue}>{issue}</p>
+                {status.issues.map((issue, index) => (
+                  <p key={index}>
+                    {typeof issue === "string" ? issue : issue.message}
+                  </p>
                 ))}
               </div>
             )}
@@ -2722,10 +2793,38 @@ function Reports({ event, run }) {
     </div>
   );
 }
-function Imports({ data, eventId, sessions, revision, act, notify, busy }) {
-  const [kind, setKind] = useState("students"),
+const attachmentTypes = ".csv,.xlsx,.xls,.pdf,.txt,.docx";
+const importLabels = {
+  students: "Students",
+  faculty: "Faculty",
+  enrollments: "Exam enrollments",
+  sittings: "Official exam timetable",
+  references: "Course and historical references",
+};
+const previewName = (record) =>
+  record.name ||
+  record.studentName ||
+  record.courseName ||
+  record.entry ||
+  record.studentId ||
+  record.code ||
+  record.type;
+
+function Imports({
+  data,
+  eventId,
+  sessions,
+  revision,
+  act,
+  notify,
+  busy,
+  incomingFile,
+  clearFile,
+}) {
+  const [kind, setKind] = useState(""),
     [rows, setRows] = useState([]),
     [text, setText] = useState(""),
+    [classification, setClassification] = useState(null),
     [filename, setFilename] = useState(""),
     [preview, setPreview] = useState(null),
     [parsing, setParsing] = useState(false),
@@ -2741,32 +2840,61 @@ function Imports({ data, eventId, sessions, revision, act, notify, busy }) {
     roomId: roomId || data.rooms[0]?.id,
   };
   useEffect(() => setPreview(null), [eventId, sittingId, roomId]);
+  useEffect(() => {
+    if (!incomingFile) return;
+    clearFile(null);
+    void fileChanged(incomingFile);
+  }, [incomingFile, clearFile]);
+
   async function fileChanged(file) {
     if (!file) return;
     if (file.size > 10 * 1024 * 1024)
       return notify("Use a file smaller than 10 MB.", true);
     setParsing(true);
     setPreview(null);
+    setClassification(null);
+    setKind("");
     setText("");
     setRows([]);
     setJson("");
     setFilename(file.name);
     try {
       const ext = file.name.split(".").at(-1).toLowerCase();
-      if (["csv", "xlsx", "xls"].includes(ext)) {
+      let output = [];
+      let detected;
+      if (ext === "docx") {
+        const result = await api("/import/docx", {
+          method: "POST",
+          headers: {
+            "content-type":
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "x-document-name": encodeURIComponent(file.name),
+          },
+          body: file,
+        });
+        output = result.rows;
+        detected = result.classification;
+      } else if (["csv", "xlsx", "xls"].includes(ext)) {
+        if (ext === "xlsx")
+          await api("/import/archive-check", {
+            method: "POST",
+            headers: {
+              "content-type":
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              "x-document-name": encodeURIComponent(file.name),
+            },
+            body: file,
+          });
         const XLSX = await import("xlsx");
         const book = XLSX.read(await file.arrayBuffer(), {
           type: "array",
           sheetRows: 252,
         });
-        const output = XLSX.utils.sheet_to_json(
-          book.Sheets[book.SheetNames[0]],
-          { defval: "" },
-        );
+        output = XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]], {
+          defval: "",
+        });
         if (output.length > 250)
           throw Error("Split imports into batches of at most 250 rows.");
-        setRows(output);
-        setJson(JSON.stringify(output, null, 2));
       } else if (ext === "pdf") {
         const pdfjs = await import("pdfjs-dist");
         pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -2795,8 +2923,29 @@ function Imports({ data, eventId, sessions, revision, act, notify, busy }) {
           throw Error(
             "This PDF needs OCR. Export a searchable PDF or spreadsheet.",
           );
-      } else if (ext === "txt") setText((await file.text()).slice(0, 25000));
-      else throw Error("Select a CSV, Excel, TXT, or searchable PDF.");
+      } else if (ext === "txt") {
+        const content = await file.text();
+        if (content.length > 25000)
+          throw Error("Split the text into smaller documents.");
+        setText(content);
+        if (content.split(/\r?\n/, 1)[0]?.includes("\t")) {
+          const XLSX = await import("xlsx");
+          const book = XLSX.read(content, { type: "string", sheetRows: 252 });
+          output = XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]], {
+            defval: "",
+          });
+        }
+      } else throw Error("Select Word, CSV, Excel, TXT, or a searchable PDF.");
+      if (output.length > 250)
+        throw Error("Split imports into batches of at most 250 rows.");
+      detected ??= await send("/import/classify", {
+        fileName: file.name,
+        rows: output,
+      });
+      setClassification(detected);
+      setKind(detected.destination || "");
+      setRows(output);
+      setJson(JSON.stringify(output, null, 2));
     } catch (error) {
       notify(error.message, true);
     } finally {
@@ -2809,14 +2958,19 @@ function Imports({ data, eventId, sessions, revision, act, notify, busy }) {
         <div>
           <h3>Review before committing</h3>
           <p>
-            Structured files use direct parsing. Text documents use Gemini
-            extraction.
+            Niyam suggests where records belong. Review the rows before saving.
           </p>
         </div>
-        <a className="text-link" href={"/templates/" + kind + ".csv"} download>
-          <Download size={15} />
-          Download CSV template
-        </a>
+        {kind && kind !== "references" && (
+          <a
+            className="text-link"
+            href={"/templates/" + kind + ".csv"}
+            download
+          >
+            <Download size={15} />
+            Download CSV template
+          </a>
+        )}
       </div>
       <div className="import-body">
         <div className="form-grid">
@@ -2828,13 +2982,12 @@ function Imports({ data, eventId, sessions, revision, act, notify, busy }) {
                 setPreview(null);
               }}
             >
-              {["students", "faculty", "enrollments", "sittings"].map(
-                (type) => (
-                  <option value={type} key={type}>
-                    {pretty(type)}
-                  </option>
-                ),
-              )}
+              <option value="">Detect from file or choose</option>
+              {Object.entries(importLabels).map(([type, label]) => (
+                <option value={type} key={type}>
+                  {label}
+                </option>
+              ))}
             </select>
           </Field>
           {kind === "enrollments" && (
@@ -2856,19 +3009,21 @@ function Imports({ data, eventId, sessions, revision, act, notify, busy }) {
             </Field>
           )}
         </div>
-        <p className="micro">
-          Columns ·{" "}
-          {
+        {kind && kind !== "references" && (
+          <p className="micro">
+            Columns ·{" "}
             {
-              students: "code, name, department, semester, email",
-              faculty: "code, name, department, email",
-              enrollments:
-                "code (candidate ID), paper (paper code), accessible (yes/no)",
-              sittings:
-                "name, code, subject, date, start, end, semester, department",
-            }[kind]
-          }
-        </p>
+              {
+                students: "code, name, department, semester, email",
+                faculty: "code, name, department, email",
+                enrollments:
+                  "code (candidate ID), paper (paper code), accessible (yes/no)",
+                sittings:
+                  "sitting, code, subject, date, start, end, semester, department",
+              }[kind]
+            }
+          </p>
+        )}
         <label className="dropzone">
           <FileUp size={31} />
           <strong>
@@ -2876,49 +3031,42 @@ function Imports({ data, eventId, sessions, revision, act, notify, busy }) {
               ? "Reading document…"
               : filename || "Choose a file to import"}
           </strong>
-          <span>CSV, Excel, searchable PDF, or TXT · up to 10 MB</span>
+          <span>Word, CSV, Excel, searchable PDF, or TXT · up to 10 MB</span>
           <input
             type="file"
-            accept=".csv,.xlsx,.xls,.pdf,.txt"
-            onChange={(e) => fileChanged(e.target.files[0])}
+            accept={attachmentTypes}
+            disabled={parsing || busy}
+            onChange={(e) => {
+              const file = e.target.files[0];
+              e.target.value = "";
+              void fileChanged(file);
+            }}
           />
         </label>
-        {text && (
-          <>
-            <Field label="Document text">
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                rows={6}
-              />
-            </Field>
-            <button
-              className="button"
-              disabled={busy}
-              onClick={async () => {
-                const result = await act(() =>
-                  send("/ai/extract", { text, kind }),
-                );
-                if (result) {
-                  if (!result.rows.length) {
-                    notify(
-                      "No records were extracted. Review the document or import a structured file.",
-                      true,
-                    );
-                    return;
-                  }
-                  setRows(result.rows);
-                  setJson(JSON.stringify(result.rows, null, 2));
-                  setPreview(null);
-                }
-              }}
-            >
-              <Sparkles size={16} />
-              Extract with Gemini
-            </button>
-          </>
+        {classification && (
+          <div className="import-preview" aria-live="polite">
+            <h3>
+              {importLabels[classification.destination] ||
+                "Choose a record type"}
+            </h3>
+            {classification.evidence.map((message) => (
+              <p key={message} className="micro">
+                {message}
+              </p>
+            ))}
+            {classification.conflicts?.map(({ table, row, message }) => (
+              <p key={table + ":" + row} className="inline-error">
+                Table {table}, row {row} · {message}
+              </p>
+            ))}
+          </div>
         )}
-        {rows.length > 0 && (
+        {text && (
+          <Field label="Document text">
+            <textarea value={text} readOnly rows={6} />
+          </Field>
+        )}
+        {json && (
           <>
             <Field label="Review and edit extracted rows as JSON">
               <textarea
@@ -2933,12 +3081,12 @@ function Imports({ data, eventId, sessions, revision, act, notify, busy }) {
             </Field>
             <button
               className="button"
-              disabled={busy}
+              disabled={busy || parsing || !kind}
               onClick={async () => {
                 try {
                   const changed = JSON.parse(json);
-                  if (!Array.isArray(changed))
-                    throw Error("Rows must be an array");
+                  if (!Array.isArray(changed) || !changed.length)
+                    throw Error("Enter one or more records to review.");
                   setRows(changed);
                   const result = await act(() =>
                     send("/import/preview", { ...body, rows: changed }),
@@ -2956,25 +3104,27 @@ function Imports({ data, eventId, sessions, revision, act, notify, busy }) {
         {preview && (
           <div className="import-preview">
             <h3>
-              {preview.items.length} valid rows · {preview.errors.length} errors
+              {preview.items.length} valid rows · {preview.errors.length}{" "}
+              {preview.errors.length === 1 ? "error" : "errors"}
             </h3>
-            {preview.errors.map((error) => (
-              <p className="inline-error" key={error.row}>
+            {preview.errors.map((error, index) => (
+              <p className="inline-error" key={index}>
                 Row {error.row} · {error.message}
               </p>
             ))}
-            <Table headers={["Row", "Action", "Record"]}>
+            <Table headers={["Source row", "Action", "Record"]}>
               {preview.items.slice(0, 20).map((item) => (
-                <tr key={item.row}>
-                  <td>{item.row}</td>
+                <tr key={item.record.id}>
+                  <td>
+                    {item.record.source
+                      ? "Table " + item.record.source.table + ", row "
+                      : ""}
+                    {item.row}
+                  </td>
                   <td>
                     <Badge>{item.action}</Badge>
                   </td>
-                  <td>
-                    {item.record.name ||
-                      item.record.studentId ||
-                      item.record.code}
-                  </td>
+                  <td>{previewName(item.record)}</td>
                 </tr>
               ))}
             </Table>
@@ -2998,6 +3148,7 @@ function Imports({ data, eventId, sessions, revision, act, notify, busy }) {
                   setPreview(null);
                   setFilename("");
                   setText("");
+                  setClassification(null);
                 }
               }}
             >
@@ -3006,8 +3157,57 @@ function Imports({ data, eventId, sessions, revision, act, notify, busy }) {
             </button>
           </div>
         )}
+        {!!data.references?.length && (
+          <SavedReferences references={data.references} />
+        )}
       </div>
     </section>
+  );
+}
+
+function SavedReferences({ references }) {
+  const [search, setSearch] = useState("");
+  const matched = references.filter((row) =>
+    [
+      previewName(row),
+      row.courseCode,
+      row.studentId,
+      row.year,
+      row.term,
+      row.batch,
+      row.facultySuggestion,
+    ].some((value) =>
+      value?.toLowerCase().includes(search.trim().toLowerCase()),
+    ),
+  );
+  return (
+    <details className="import-preview">
+      <summary>Saved references ({references.length})</summary>
+      <Field label="Search references">
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+      </Field>
+      <Table
+        headers={["Reference", "Academic year", "Section / batch", "Source"]}
+      >
+        {matched.slice(0, 25).map((row) => (
+          <tr key={row.id}>
+            <td>{previewName(row)}</td>
+            <td>{row.year || row.term || "—"}</td>
+            <td>{row.batch || row.section || "—"}</td>
+            <td>
+              {row.source.fileName} · Table {row.source.table}, row{" "}
+              {row.source.row}
+            </td>
+          </tr>
+        ))}
+      </Table>
+      {matched.length > 25 && (
+        <p className="micro">Search to narrow the {matched.length} results.</p>
+      )}
+    </details>
   );
 }
 function Access({ data, act, revision, notify, busy }) {
@@ -3341,10 +3541,11 @@ function SettingsPage({
     </div>
   );
 }
-function Assistant({ eventId, close }) {
+function Assistant({ eventId, close, onAttach }) {
   const [question, setQuestion] = useState(""),
     [messages, setMessages] = useState([]),
     [busy, setBusy] = useState(false);
+  const attachment = useRef(null);
   return (
     <section className="assistant">
       <header>
@@ -3398,6 +3599,28 @@ function Assistant({ eventId, close }) {
           }
         }}
       >
+        {onAttach && (
+          <>
+            <input
+              ref={attachment}
+              type="file"
+              accept={attachmentTypes}
+              hidden
+              onChange={(event) => {
+                const file = event.target.files[0];
+                if (file) onAttach(file);
+              }}
+            />
+            <button
+              type="button"
+              className="icon"
+              aria-label="Attach a document"
+              onClick={() => attachment.current.click()}
+            >
+              <Paperclip size={17} />
+            </button>
+          </>
+        )}
         <input
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
