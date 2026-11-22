@@ -40,6 +40,7 @@ import {
 import "@fontsource-variable/manrope";
 import "@fontsource-variable/dm-sans";
 import "./style.css";
+import { isHistoricalBatchDocument, prepareStudentRoster } from "../shared/historical-roster.js";
 
 async function api(path, options = {}) {
   const res = await fetch("/api" + path, {
@@ -2932,6 +2933,10 @@ function Imports({
 }) {
   const [kind, setKind] = useState(""),
     [rows, setRows] = useState([]),
+    [sourceRows, setSourceRows] = useState([]),
+    [convertedRoster, setConvertedRoster] = useState(false),
+    [rosterDepartment, setRosterDepartment] = useState(""),
+    [rosterSemester, setRosterSemester] = useState(""),
     [text, setText] = useState(""),
     [classification, setClassification] = useState(null),
     [filename, setFilename] = useState(""),
@@ -2941,6 +2946,11 @@ function Imports({
     [sittingId, setSitting] = useState(""),
     [roomId, setRoom] = useState(""),
     [json, setJson] = useState("");
+  const historicalDocument =
+    classification?.referenceType === "historical-lab-batch" &&
+    isHistoricalBatchDocument(sourceRows);
+  const incompatibleHistoricalKind =
+    historicalDocument && kind !== "references" && !(kind === "students" && convertedRoster);
   const body = {
     kind,
     rows,
@@ -2967,6 +2977,10 @@ function Imports({
     setKind("");
     setText("");
     setRows([]);
+    setSourceRows([]);
+    setConvertedRoster(false);
+    setRosterDepartment("");
+    setRosterSemester("");
     setJson("");
     setFilename(file.name);
     try {
@@ -3055,7 +3069,10 @@ function Imports({
       });
       setClassification(detected);
       setKind(detected.destination || "");
+      setSourceRows(output);
       setRows(output);
+      setConvertedRoster(false);
+      setRosterSemester(detected.semester ? String(detected.semester) : "");
       setJson(JSON.stringify(output, null, 2));
     } catch (error) {
       notify(error.message, true);
@@ -3089,9 +3106,15 @@ function Imports({
             <select
               value={kind}
               onChange={(e) => {
-                setKind(e.target.value);
+                const nextKind = e.target.value;
+                setKind(nextKind);
                 setPreview(null);
                 setSkipInvalid(false);
+                if (historicalDocument) {
+                  setRows(sourceRows);
+                  setJson(JSON.stringify(sourceRows, null, 2));
+                  setConvertedRoster(false);
+                }
               }}
             >
               <option value="">Detect from file or choose</option>
@@ -3158,8 +3181,8 @@ function Imports({
         {classification && (
           <div className="import-preview" aria-live="polite">
             <h3>
-              {importLabels[classification.destination] ||
-                "Choose a record type"}
+              Detected source: {importLabels[classification.destination] ||
+                "Unclassified records"}
             </h3>
             {classification.evidence.map((message) => (
               <p key={message} className="micro">
@@ -3172,6 +3195,79 @@ function Imports({
               </p>
             ))}
           </div>
+        )}
+        {historicalDocument && kind === "references" && (
+          <p className="micro" role="status">
+            Historical records are saved as references, not active exam candidates.
+            To create current student profiles, select Students above and confirm
+            their department and current semester.
+          </p>
+        )}
+        {historicalDocument && kind === "students" && (
+          <div className="import-preview historical-roster" aria-live="polite">
+            <h3>Convert historical batch into a current student roster</h3>
+            <p className="micro">
+              This file contains historical lab assignments, not a verified
+              current enrollment list. Confirm the department and CURRENT semester
+              before creating student profiles. Imported profiles have no email;
+              add verified emails before enabling Google sign-in or enrollment.
+              Existing USNs are shown as updates at preview, not duplicated.
+            </p>
+            <div className="form-grid">
+              <Field label="Department code (required)">
+                <input
+                  value={rosterDepartment}
+                  onChange={(event) => {
+                    setRosterDepartment(event.target.value);
+                    setConvertedRoster(false);
+                    setPreview(null);
+                  }}
+                  placeholder="e.g. ISE"
+                  maxLength={32}
+                  required
+                />
+              </Field>
+              <Field label="Current semester (required)">
+                <input type="number" min="1" max="16" step="1"
+                  value={rosterSemester}
+                  onChange={(event) => {
+                    setRosterSemester(event.target.value);
+                    setConvertedRoster(false);
+                    setPreview(null);
+                  }} required />
+              </Field>
+            </div>
+            <button className="button" type="button" disabled={parsing || busy}
+              onClick={() => {
+                try {
+                  const prepared = prepareStudentRoster(sourceRows, {
+                    department: rosterDepartment, semester: rosterSemester,
+                  });
+                  setRows(prepared);
+                  setJson(JSON.stringify(prepared, null, 2));
+                  setConvertedRoster(true);
+                  setPreview(null);
+                  notify("Student roster prepared. Review every row before importing.");
+                } catch (error) {
+                  notify(error.message, true);
+                }
+              }}>
+              Prepare student roster ({sourceRows.length} source rows)
+            </button>
+            {convertedRoster && (
+              <p className="micro" role="status">
+                Student rows prepared. Review the JSON and validate before committing.
+                Any duplicate USNs will be reported for review.
+              </p>
+            )}
+          </div>
+        )}
+        {historicalDocument && kind &&
+          !["references", "students"].includes(kind) && (
+          <p className="inline-error" role="alert">
+            Historical lab-batch records cannot be imported as {importLabels[kind]}.
+            Choose Course and historical references, or convert to Students.
+          </p>
         )}
         {text && (
           <Field label="Document text">
@@ -3194,9 +3290,11 @@ function Imports({
             </Field>
             <button
               className="button"
-              disabled={busy || parsing || !kind}
+              disabled={busy || parsing || !kind || incompatibleHistoricalKind}
               onClick={async () => {
                 try {
+                  if (incompatibleHistoricalKind)
+                    throw Error("Convert the historical document to students, or choose references.");
                   const changed = JSON.parse(json);
                   if (!Array.isArray(changed) || !changed.length)
                     throw Error("Enter one or more records to review.");
@@ -3274,6 +3372,10 @@ function Imports({
                   setFilename("");
                   setText("");
                   setClassification(null);
+                  setSourceRows([]);
+                  setConvertedRoster(false);
+                  setRosterDepartment("");
+                  setRosterSemester("");
                 }
               }}
             >
