@@ -184,7 +184,7 @@ try {
   });
   assert.equal(deniedWrite.status, 403, "Student must never modify another student's records");
   await verifyWorkspace({ base, adminHeaders, studentCookie });
-  await verifyContent({ base, adminHeaders, studentCookie });
+  const { demoCleanupToken } = await verifyContent({ base, adminHeaders, studentCookie });
   const logout = await fetch(base + "/api/session", { method: "DELETE", headers: { Cookie: cookie, Origin: base } });
   assert.equal(logout.status, 200);
   assert.equal((await fetch(base + "/api/institution", { headers: { Cookie: cookie } })).status, 401);
@@ -236,6 +236,16 @@ try {
     await page.getByRole("tab", { name: "Admin" }).click();
     await page.getByRole("heading", { name: "Welcome back." }).waitFor();
   } finally { await browser.close(); }
+  const cleanup = await fetch(base + "/api/ai/actions/execute", {
+    method: "POST", headers: adminHeaders,
+    body: JSON.stringify({ token: demoCleanupToken, confirmation: "REMOVE DEMO" }),
+  });
+  const cleanupJson = await cleanup.json();
+  assert.equal(cleanup.status, 200, JSON.stringify(cleanupJson));
+  assert.ok(cleanupJson.result.removedStudents >= 100);
+  const afterDemo = await (await fetch(base + "/api/workspace", { headers: adminHeaders })).json();
+  assert.equal(afterDemo.data.students.some(item => /^DEMO\d+$/i.test(item.code)), false);
+  assert.equal(afterDemo.data.students.some(item => item.code === "AITEST001"), true);
   console.log("Next App Router, PostgreSQL, native auth/role boundaries and browser smoke passed");
 } catch (err) {
   for (const child of children) console.error(child.logs().slice(-4000));

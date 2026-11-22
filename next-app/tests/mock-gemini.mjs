@@ -12,6 +12,14 @@ globalThis.fetch = async (input, options) => {
   let text;
   if (body.systemInstruction.parts[0].text === "Connection test.") {
     text = "OK";
+  } else if (body.generationConfig.responseSchema?.type === "OBJECT") {
+    assert.match(body.systemInstruction.parts[0].text, /Extract a student-record action/);
+    const parsed = JSON.parse(body.contents[0].parts[0].text);
+    assert.match(parsed.question, /AITEST001/);
+    text = JSON.stringify({
+      action: "create_student", code: "AITEST001", name: "AI Test Candidate",
+      department: "ISE", semester: "3", email: "aitest@example.edu",
+    });
   } else if (body.generationConfig.responseSchema) {
     assert.equal(body.contents[0].parts[0].text, "Example candidate DEMO001");
     text = JSON.stringify([{ code: "DEMO001", name: "Example candidate" }]);
