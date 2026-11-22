@@ -1,4 +1,5 @@
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { join } = require("node:path");
 const base = require("./target.json").origin;
 const url = new URL(base);
 if (
@@ -13,6 +14,20 @@ const allowed = (value) => {
     return false;
   }
 };
+// A desktop login opens only a Niyam pairing URL in the system browser.
+ipcMain.handle("niyam:open-login", async (event, target) => {
+  if (!allowed(event.sender.getURL())) throw new Error("Invalid caller");
+  let next;
+  try { next = new URL(target); } catch { throw new Error("Invalid login URL"); }
+  if (
+    next.origin !== url.origin ||
+    next.pathname !== "/" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(next.searchParams.get("desktop") || "") ||
+    !["faculty", "student"].includes(next.searchParams.get("role")) ||
+    [...next.searchParams.keys()].some((key) => !["desktop", "role"].includes(key))
+  ) throw new Error("Invalid desktop login request");
+  await shell.openExternal(next.href);
+});
 function open() {
   const window = new BrowserWindow({
     width: 1400,
@@ -23,6 +38,7 @@ function open() {
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
+      preload: join(__dirname, "preload.cjs"),
       sandbox: true,
       nodeIntegration: false,
       webviewTag: false,
