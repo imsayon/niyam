@@ -148,6 +148,31 @@ export async function verifyContent({ base, adminHeaders, studentCookie }) {
   assert.ok(demo.action.impact.students >= 100);
   await json("/ai/actions/execute", { body: { token: demo.action.token, confirmation: "yes" }, status: 422 });
   assert.equal((await json("/workspace")).data.students.some(student => student.code === "DEMO001"), true);
+  // File knowledge is separate from roster imports and is per administrator.
+  const documentHeaders = new Headers(adminHeaders);
+  documentHeaders.set("content-type", "application/octet-stream");
+  documentHeaders.set("x-document-name", encodeURIComponent("batch source.docx"));
+  assert.equal((await json("/ai/documents", { headers: studentHeaders, status: 403 })).error !== undefined, true);
+  const documentResponse = await fetch(base + "/api/ai/documents", {
+    method: "POST", headers: documentHeaders, body: historicalDocx(),
+  });
+  const documentSaved = await documentResponse.json();
+  assert.equal(documentResponse.status, 201, JSON.stringify(documentSaved));
+  assert.match(documentSaved.summary, /NOT imported/i);
+  assert.equal((await json("/ai/documents")).documents.length, 1);
+  assert.equal((await json("/ai/documents", { headers: studentHeaders, status: 403 })).error !== undefined, true);
+  const repeats = await fetch(base + "/api/ai/documents", {
+    method: "POST", headers: documentHeaders, body: historicalDocx(),
+  });
+  assert.equal(repeats.status, 201);
+  assert.equal((await repeats.json()).id, documentSaved.id, "Same evidence must deduplicate by content hash");
+  await sleep(850);
+  const fromFile = await json("/ai/ask", { body: { question: "What does my attached batch source file say about Candidate 1?" } });
+  assert.match(fromFile.answer, /batch source/i);
+  await json("/ai/documents", { method: "DELETE", headers: { ...adminHeaders, Origin: "https://attacker.example" }, status: 403 });
+  assert.equal((await json("/ai/documents")).documents.length, 1);
+  assert.equal((await json("/ai/documents", { method: "DELETE" })).removed, 1);
+  assert.deepEqual((await json("/ai/documents")).documents, []);
   // The confirmed clean-up is verified at the end of smoke, after all other
   // reports and role-specific tests have used the synthetic fixture.
   return { demoCleanupToken: demo.action.token };
