@@ -56,6 +56,12 @@ Do not stop after writing plans or a visual redesign. A strong final report need
 
 **Truth above rhetoric.** If a gate has not passed, keep production on legacy and label the work unshipped. If a command cannot run because of local access or infrastructure, finish every other independent part and leave one precise, reproducible blocker and next command. Never announce 'complete' on a successful build alone.
 
+## Source-verified route parity checkpoint
+
+At the November 23 preview checkpoint, `docs/API_PARITY.md` tracks 38 distinct registered method/path pairs: **12 native Next handlers and 26 remaining temporary Express handlers**. Check the live branch before relying on counts. A pinned `next-app/package-lock.json` is committed; use `npm ci --prefix next-app`. CI runs Next build, TypeScript, isolated PostgreSQL API smoke and Chromium browser interaction tests. Those green tests prove tested slices only, not entire product parity.
+
+The local one-command finisher is `scripts/codex-finish.sh` after switching to this migration branch. Its branch/dirty-tree checks are intentional; do not bypass them to save effort.
+
 ## Immediate work, no re-planning loop
 
 1. Run `git status --short`, compare branch to base, read current CI logs and identify real failures.
