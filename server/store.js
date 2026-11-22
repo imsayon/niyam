@@ -130,6 +130,8 @@ export async function change(
     );
     if (revision !== row.revision)
       throw new HttpError(409, "The workspace changed. Refresh and try again.");
+    // Earlier demo fixtures did not contain this optional collection.
+    row.data.references ??= [];
     const result = await work(row.data, client);
     const next = row.revision + Number(planning);
     await client.query(
