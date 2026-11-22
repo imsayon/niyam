@@ -7,7 +7,7 @@ This is a working App Router **frontend migration baseline**, not the final prod
 ## Local development
 
 1. Provision a **separate development database**, ideally a short-lived Neon branch. Never reuse production `DATABASE_URL`. Backups and encryption key custody remain the owner's responsibility.
-2. At repository root run `npm ci`, then `cd next-app && npm install`.
+2. At repository root run `npm ci`, then `cd next-app && npm ci`.
 3. At repository root, start the legacy API against the isolated database:
 
 ```bash
@@ -37,5 +37,5 @@ DATABASE_URL='<sandbox-db-url>' NIYAM_LEGACY_API_ORIGIN=http://127.0.0.1:4317 np
 1. Extract authorization and all API operations into native Next Route Handlers and framework-neutral domain modules. Remove the Express dependency and local rewrite from the final build.
 2. Convert the preserved `legacy/` JSX into typed, well-composed Next client/server components and deliver the requested superior design.
 3. Prove parity for role-scoped sign-in (admin/Google), desktop pairing, CRUD, allocation, publication, revision conflicts, historical imports, reports and persistent Gemini conversations.
-4. Commit a generated dependency lockfile and use reproducible `npm ci` installs for the Next preview.
+4. Keep the committed Next dependency lockfile current and use reproducible `npm ci` installs for the preview.
 5. Verify real staging with cloned data, failure testing, Playwright, desktop Windows smoke, and a documented production rollback. Only then switch Render.
