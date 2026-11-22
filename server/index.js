@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import { database, setup } from "./store.js";
 import { accountApi } from "./accounts.js";
+import { institutionApi } from "./institution.js";
 import { workspaceApi } from "./workspace.js";
 import { outputApi } from "./outputs.js";
 import { documentApi } from "./documents.js";
@@ -57,6 +58,7 @@ export function application(db) {
     });
   });
   accountApi(app, db, origin);
+  institutionApi(app, db);
   documentApi(app);
   workspaceApi(app, db);
   outputApi(app, db);
