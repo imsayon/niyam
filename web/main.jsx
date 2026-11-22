@@ -2936,6 +2936,7 @@ function Imports({
     [classification, setClassification] = useState(null),
     [filename, setFilename] = useState(""),
     [preview, setPreview] = useState(null),
+    [skipInvalid, setSkipInvalid] = useState(false),
     [parsing, setParsing] = useState(false),
     [sittingId, setSitting] = useState(""),
     [roomId, setRoom] = useState(""),
@@ -2948,7 +2949,7 @@ function Imports({
     sittingId: sittingId || sessions[0]?.id,
     roomId: roomId || data.rooms[0]?.id,
   };
-  useEffect(() => setPreview(null), [eventId, sittingId, roomId]);
+  useEffect(() => { setPreview(null); setSkipInvalid(false); }, [eventId, sittingId, roomId]);
   useEffect(() => {
     if (!incomingFile) return;
     clearFile(null);
@@ -2962,6 +2963,7 @@ function Imports({
     setParsing(true);
     setPreview(null);
     setClassification(null);
+    setSkipInvalid(false);
     setKind("");
     setText("");
     setRows([]);
@@ -3089,6 +3091,7 @@ function Imports({
               onChange={(e) => {
                 setKind(e.target.value);
                 setPreview(null);
+                setSkipInvalid(false);
               }}
             >
               <option value="">Detect from file or choose</option>
@@ -3185,6 +3188,7 @@ function Imports({
                 onChange={(e) => {
                   setJson(e.target.value);
                   setPreview(null);
+                  setSkipInvalid(false);
                 }}
               />
             </Field>
@@ -3197,6 +3201,7 @@ function Imports({
                   if (!Array.isArray(changed) || !changed.length)
                     throw Error("Enter one or more records to review.");
                   setRows(changed);
+                  setSkipInvalid(false);
                   const result = await act(() =>
                     send("/import/preview", { ...body, rows: changed }),
                   );
@@ -3237,24 +3242,35 @@ function Imports({
                 </tr>
               ))}
             </Table>
-            <button
-              className="button primary"
-              disabled={
-                busy || preview.errors.length > 0 || preview.items.length === 0
-              }
+            {preview.errors.length > 0 && preview.items.length > 0 && (
+              <label className="partial-import">
+                <input type="checkbox" checked={skipInvalid}
+                  onChange={(event) => setSkipInvalid(event.target.checked)} />
+                <span>Import {preview.items.length} valid rows and skip {preview.errors.length}
+                  {" "}invalid {preview.errors.length === 1 ? "row" : "rows"}.
+                  Review the conflicts first; skipped records will not be saved.</span>
+              </label>
+            )}
+            <button className="button primary"
+              disabled={busy || preview.items.length === 0 ||
+                (preview.errors.length > 0 && !skipInvalid)}
               onClick={async () => {
                 const result = await act(
                   () =>
                     send("/import/commit", {
                       ...body,
                       revision: preview.revision,
+                      skipInvalid,
                     }),
-                  "Import committed",
+                  skipInvalid
+                    ? `Imported ${preview.items.length} valid rows; skipped ${preview.errors.length}`
+                    : "Import committed",
                 );
                 if (result) {
                   setRows([]);
                   setJson("");
                   setPreview(null);
+                  setSkipInvalid(false);
                   setFilename("");
                   setText("");
                   setClassification(null);
