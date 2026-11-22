@@ -120,10 +120,15 @@ export function outputApi(app, db) {
     const account = aiAccess(req);
     const { question, eventId } = z
       .object({
-        question: z.string().trim().min(3).max(600),
+        question: z.string().trim().min(1).max(600),
         eventId: z.string().max(80).optional(),
       })
       .parse(req.body);
+    if (/^(hi|hello|hey)[!. ]*$/i.test(question))
+      return res.json({
+        answer:
+          "Hi! Ask me about exam timings, room assignments, or invigilation.",
+      });
     const { data } = await snapshot(db);
     let source;
     if (account.role === "admin") {

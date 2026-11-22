@@ -180,11 +180,16 @@ export function firebaseOutputApi(app, store, { generate = gemini } = {}) {
     const account = aiAccess(req, [], req.body);
     const { question, eventId } = z
       .object({
-        question: z.string().trim().min(3).max(600),
+        question: z.string().trim().min(1).max(600),
         eventId: z.string().max(80).optional(),
         department: z.literal(departmentId).optional(),
       })
       .parse(req.body);
+    if (/^(hi|hello|hey)[!. ]*$/i.test(question))
+      return res.json({
+        answer:
+          "Hi! Ask me about exam timings, room assignments, or invigilation.",
+      });
     const { data } = await store.snapshot();
     if (
       eventId &&

@@ -107,6 +107,18 @@ const nav = [
   ["audit", "Activity log", History],
   ["settings", "Settings", Settings],
 ];
+const pagePath = (page) =>
+  page === "overview" ? "/" : "/" + (page === "events" ? "examinations" : page);
+const readPage = () =>
+  nav.find(
+    ([id]) =>
+      pagePath(id) === location.pathname.replace(/\/$/, "") ||
+      pagePath(id) === location.pathname,
+  )?.[0] || "overview";
+const canOpen = (role, page) =>
+  role === "admin" ||
+  ["overview", "settings"].includes(page) ||
+  (role === "faculty" && page === "leaves");
 function Badge({ children }) {
   return (
     <span className={"badge " + String(children).toLowerCase()}>
@@ -199,7 +211,7 @@ function App() {
   currentAccount.current = session?.account?.id;
   const workspaceVersion = useRef(null);
   const [importFile, setImportFile] = useState(null);
-  const [page, setPage] = useState("overview"),
+  const [route, setPage] = useState(readPage),
     [eventId, setEventId] = useState(""),
     [modal, setModalState] = useState(null),
     [notice, setNotice] = useState(null),
@@ -275,7 +287,6 @@ function App() {
       setEventId(data.events?.[0]?.id || "");
   }, [data.events, eventId]);
   useEffect(() => {
-    setPage("overview");
     setModalState(null);
   }, [session?.account?.id]);
   useEffect(() => {
@@ -288,7 +299,17 @@ function App() {
     window.addEventListener("niyam-session-expired", expired);
     return () => window.removeEventListener("niyam-session-expired", expired);
   }, []);
+  useEffect(() => {
+    const sync = () => setPage(readPage());
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
   const account = session?.account;
+  const page = canOpen(account?.role, route) ? route : "overview";
+  useEffect(() => {
+    if (account && location.pathname !== pagePath(page))
+      history.replaceState(null, "", pagePath(page));
+  }, [account, page, route]);
   async function act(task, success) {
     setBusy(true);
     try {
@@ -319,6 +340,8 @@ function App() {
     setModal({ type: "delete", kind, row });
   }
   const go = (value) => {
+    if (location.pathname !== pagePath(value))
+      history.pushState(null, "", pagePath(value));
     setPage(value);
     setMobile(false);
   };
@@ -431,25 +454,32 @@ function App() {
           </span>
           <div>
             <strong>Niyam College</strong>
-            <small>Evaluation workspace</small>
+            <small>Examination workspace</small>
           </div>
           <Badge>{account.role}</Badge>
         </div>
         <div className="nav-label">WORKSPACE</div>
         <nav>
           {nav
-            .filter(
-              ([id]) =>
-                account.role === "admin" ||
-                (["overview", "leaves", "settings"].includes(id) &&
-                  !(account.role === "student" && id === "leaves")),
-            )
+            .filter(([id]) => canOpen(account.role, id))
             .map(([id, label, Icon]) => (
-              <button
+              <a
                 className={page === id ? "active" : ""}
                 aria-label={label}
                 key={id}
-                onClick={() => go(id)}
+                href={pagePath(id)}
+                aria-current={page === id ? "page" : undefined}
+                onClick={(event) => {
+                  if (
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  )
+                    return;
+                  event.preventDefault();
+                  go(id);
+                }}
               >
                 <Icon size={19} />
                 {label}
@@ -458,7 +488,7 @@ function App() {
                   data.leaves?.some((leave) => leave.status === "pending") && (
                     <span className="nav-dot" />
                   )}
-              </button>
+              </a>
             ))}
         </nav>
         <div className="sidebar-bottom">
@@ -601,7 +631,7 @@ function App() {
           <span>
             {session.firebase
               ? "ISE · Department workspace"
-              : "Evaluation workspace · Synthetic records"}
+              : "Examination workspace"}
           </span>
         </footer>
       </div>
@@ -2590,9 +2620,7 @@ function Personal({ data, account, setModal }) {
                     </Table>
                   </details>
                 )}
-                <small className="micro">
-                  Published revision {item.revision.slice(0, 8)}
-                </small>
+                <small className="micro">Published plan</small>
                 <a
                   className="text-link"
                   href={
@@ -3461,7 +3489,7 @@ function SettingsPage({
         </section>
         <section className="panel">
           <div className="panel-title">
-            <h3>Gemini integration</h3>
+            <h3>Assistant settings</h3>
             <Sparkles size={19} />
           </div>
           <div className="dialog-content">
@@ -3479,7 +3507,7 @@ function SettingsPage({
                         key,
                         model: new FormData(e.currentTarget).get("model"),
                       }),
-                    "Gemini configuration saved",
+                    "Assistant settings saved",
                   );
                   if (result) {
                     setKey("");
@@ -3525,12 +3553,7 @@ function SettingsPage({
                 <a className="button primary" href={release.windows}>
                   Download for Windows <Download size={16} />
                 </a>
-                <small className="micro">
-                  Evaluation release · Requires an internet connection
-                </small>
-                {release.sha256 && (
-                  <small className="mono">SHA-256 {release.sha256}</small>
-                )}
+                <small className="micro">Requires an internet connection</small>
               </>
             ) : (
               <p>The Windows installer is being prepared.</p>
