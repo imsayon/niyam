@@ -506,6 +506,11 @@ export function importRows(data, body) {
   }
   for (const [index, raw] of body.rows.entries()) {
     try {
+      if (raw.type === "historical-lab-batch" && body.kind !== "references")
+        fail(
+          "This is a historical lab reference, not a current student record. " +
+          "Choose References or explicitly prepare a student roster with confirmed department and semester.",
+        );
       if (body.kind === "references") {
         const next = schemas.references.parse(raw);
         const key = importKey(body.kind, next);
@@ -580,6 +585,10 @@ export function importRows(data, body) {
       const existing = original[body.kind].find(matches);
       if (items.some((item) => matches(item.record)))
         fail("Duplicate row in this import.");
+      // Blank email cells in imported student directories must not remove an
+      // existing verified contact address or break roster-linked Google access.
+      if (body.kind === "students" && existing && !next.email)
+        next.email = existing.email;
       const record = { ...next, id: existing?.id || randomUUID() };
       validate(data, body.kind, record);
       items.push({

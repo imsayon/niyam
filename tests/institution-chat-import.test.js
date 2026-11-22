@@ -5,6 +5,7 @@ import { application } from "../server/index.js";
 import { adminEmail } from "../server/accounts.js";
 import { database, setup } from "../server/store.js";
 import { seedDemo } from "../scripts/seed.js";
+import { prepareStudentRoster } from "../shared/historical-roster.js";
 
 test("institution, persisted AI conversation, and reviewed duplicate import are durable", {
   skip: !process.env.TEST_DATABASE_URL,
@@ -147,4 +148,38 @@ test("institution, persisted AI conversation, and reviewed duplicate import are 
   next = await req("/workspace", { cookie: adminCookie });
   assert.equal(next.data.data.references.length, 1);
   assert.equal(next.data.data.students.length, 120);
+
+  const historical = Array.from({ length: 208 }, (_, i) => ({
+    ...reference,
+    studentId: "1DS24IS" + String(i === 207 ? 205 : i + 1).padStart(3, "0"),
+    studentName: "Imported Candidate " + (i + 1),
+    source: { fileName: "III _ Lab Batches_2025-26.docx", table: 1, row: i + 2 },
+  }));
+  const roster = prepareStudentRoster(historical, { department: "ISE", semester: 3 });
+  const payload = { revision: next.data.revision, kind: "students", rows: roster };
+  const previewRoster = await req("/import/preview", {
+    cookie: adminCookie, body: payload,
+  });
+  assert.equal(previewRoster.status, 200);
+  assert.equal(previewRoster.data.items.length, 207);
+  assert.equal(previewRoster.data.errors.length, 1);
+  const noSkip = await req("/import/commit", { cookie: adminCookie, body: payload });
+  assert.equal(noSkip.status, 422);
+  assert.equal((await req("/workspace", { cookie: adminCookie })).data.data.students.length, 120);
+  const added = await req("/import/commit", {
+    cookie: adminCookie, body: { ...payload, skipInvalid: true },
+  });
+  assert.equal(added.status, 200, JSON.stringify(added.data));
+  assert.deepEqual(added.data.result, { imported: 207, skipped: 1 });
+  next = await req("/workspace", { cookie: adminCookie });
+  assert.equal(next.data.data.students.length, 327);
+  assert.equal(next.data.data.references.length, 1);
+  assert.equal(next.data.data.students.filter((row) => row.code === "1DS24IS205").length, 1);
+  const reimported = await req("/import/commit", {
+    cookie: adminCookie,
+    body: { ...payload, revision: next.data.revision, skipInvalid: true },
+  });
+  assert.equal(reimported.status, 200, JSON.stringify(reimported.data));
+  next = await req("/workspace", { cookie: adminCookie });
+  assert.equal(next.data.data.students.length, 327);
 });
