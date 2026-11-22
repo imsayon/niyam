@@ -170,13 +170,13 @@ export async function askAi(db, account, body) {
       "from", "existing", "what", "which", "there", "their", "batch", "batches", "file", "files",
       "imported", "upload", "uploaded", "names", "name"]);
     const keywords = directoryTerms.filter(word => !stopwords.has(word));
-    const queryHasStudents = /\\b(students?|candidates?|roster|usn|roll|names?|demo|example)\\b/i.test(question);
-    const queryHasDocuments = /\\b(file|document|upload|batch|reference|source|docx|pdf)\\b/i.test(question);
+    const queryHasStudents = /\b(students?|candidates?|roster|usn|roll|names?|demo|example)\b/i.test(question);
+    const queryHasDocuments = /\b(file|document|upload|batch|reference|source|docx|pdf)\b/i.test(question);
     if (queryHasStudents) {
       const matches = data.students.filter(person => {
         const detail = [person.name, person.code, person.email, person.department, String(person.semester)].join(" ").toLowerCase();
         return !keywords.length || keywords.some(keyword => detail.includes(keyword)) ||
-          (/\\b(demo|example)\\b/i.test(question) && /^DEMO\\d+$/i.test(person.code));
+          (/\b(demo|example)\b/i.test(question) && /^DEMO\d+$/i.test(person.code));
       });
       source.studentRecords = {
         total: data.students.length,
