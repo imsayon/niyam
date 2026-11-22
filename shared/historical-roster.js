@@ -25,8 +25,8 @@ export function reviewStudentRoster(rows, { department, semester }) {
   const conflicts = [];
   for (const [index, row] of rows.entries()) {
     const candidate = {
-      code: String(row.studentId ?? "").replace(/\\s+/g, "").toUpperCase(),
-      name: String(row.studentName ?? "").replace(/\\s+/g, " ").trim(),
+      code: String(row.studentId ?? "").replace(/\s+/g, "").toUpperCase(),
+      name: String(row.studentName ?? "").replace(/\s+/g, " ").trim(),
       department: code,
       semester: term,
       email: "",
