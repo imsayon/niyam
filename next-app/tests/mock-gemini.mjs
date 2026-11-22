@@ -12,21 +12,35 @@ globalThis.fetch = async (input, options) => {
   let text;
   if (body.systemInstruction.parts[0].text === "Connection test.") {
     text = "OK";
+  } else if (body.generationConfig.responseSchema?.type === "OBJECT") {
+    assert.match(body.systemInstruction.parts[0].text, /Extract a student-record action/);
+    const parsed = JSON.parse(body.contents[0].parts[0].text);
+    assert.match(parsed.question, /AITEST001/);
+    text = JSON.stringify({
+      action: "create_student", code: "AITEST001", name: "AI Test Candidate",
+      department: "ISE", semester: "3", email: "aitest@example.edu",
+    });
   } else if (body.generationConfig.responseSchema) {
     assert.equal(body.contents[0].parts[0].text, "Example candidate DEMO001");
     text = JSON.stringify([{ code: "DEMO001", name: "Example candidate" }]);
   } else {
     const context = JSON.parse(body.contents[0].parts[0].text);
     assert.match(body.systemInstruction.parts[0].text, /only from the CURRENT authorized source/);
-    assert.equal(context.question, "What about my schedule?");
-    assert.equal(context.previousTurns.length, 2);
-    assert.deepEqual(context.previousTurns.map((turn) => turn.role), ["user", "assistant"]);
-    assert.equal(context.previousTurns[0].text, "Hi");
-    assert.equal(context.source.length, 1);
-    assert.equal(context.source[0].paper, "Data Structures");
-    assert.ok(context.source[0].room);
-    assert.ok(!JSON.stringify(context).includes("DEMO002"));
-    text = "Your Data Structures room is " + context.source[0].room + ".";
+    if (/attached batch source file/.test(context.question)) {
+      assert.equal(context.source.attachedDocuments.records[0].fileName, "batch source.docx");
+      assert.match(context.source.attachedDocuments.records[0].excerpt, /Candidate 1/);
+      text = "The batch source file includes Candidate 1.";
+    } else {
+      assert.equal(context.question, "What about my schedule?");
+      assert.equal(context.previousTurns.length, 2);
+      assert.deepEqual(context.previousTurns.map((turn) => turn.role), ["user", "assistant"]);
+      assert.equal(context.previousTurns[0].text, "Hi");
+      assert.equal(context.source.length, 1);
+      assert.equal(context.source[0].paper, "Data Structures");
+      assert.ok(context.source[0].room);
+      assert.ok(!JSON.stringify(context).includes("DEMO002"));
+      text = "Your Data Structures room is " + context.source[0].room + ".";
+    }
   }
   return Response.json({ candidates: [{ content: { parts: [{ text }] } }] });
 };

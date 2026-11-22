@@ -53,6 +53,7 @@ export async function verifyContent({ base, adminHeaders, studentCookie }) {
   const xlsxType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   const historical = await upload("docx", "historical Lab Batch.docx", historicalDocx(), docxType);
   assert.equal(historical.rows.length, 208);
+  assert.equal(historical.classification.destination, "students");
   assert.equal(historical.classification.referenceType, "historical-lab-batch");
   assert.ok(historical.rows.every((row) => row.historical && !row.candidatePool));
   await upload("docx", "historical.docx", historicalDocx(), docxType, 403, studentHeaders);
@@ -113,4 +114,66 @@ export async function verifyContent({ base, adminHeaders, studentCookie }) {
   assert.deepEqual(await json("/ai/extract", { body: { text: "Example candidate DEMO001", kind: "students" } }), {
     rows: [{ code: "DEMO001", name: "Example candidate" }],
   });
+
+  // LLM proposals never write on their own. The admin must approve a
+  // signed token. A student cannot replay the token or execute the action.
+  await sleep(5100); // Extraction has a five-second, account-wide AI cooldown.
+  const proposed = await json("/ai/ask", { body: {
+    question: "Add student named AI Test Candidate with USN AITEST001 in ISE department, semester 3, email aitest@example.edu",
+  } });
+  assert.equal(proposed.action.operation, "create_student");
+  assert.match(proposed.action.summary, /AITEST001/);
+  assert.ok(proposed.action.token);
+  const before = await json("/workspace");
+  assert.equal(before.data.students.some(student => student.code === "AITEST001"), false);
+  await json("/ai/actions/execute", { body: { token: proposed.action.token }, headers: studentHeaders, status: 403 });
+  await json("/ai/actions/execute", { body: { token: proposed.action.token, confirmation: "" },
+    headers: { ...adminHeaders, Origin: "https://malicious.example" }, status: 403 });
+  const altered = proposed.action.token.slice(0, -1) + (proposed.action.token.endsWith("a") ? "b" : "a");
+  await json("/ai/actions/execute", { body: { token: altered }, status: 403 });
+  const committed = await json("/ai/actions/execute", { body: { token: proposed.action.token } });
+  assert.equal(committed.ok, true);
+  assert.equal(committed.result.code, "AITEST001");
+  const after = await json("/workspace");
+  assert.equal(after.data.students.filter(student => student.code === "AITEST001").length, 1);
+  assert.equal(after.revision, before.revision + 1);
+  await json("/ai/actions/execute", { body: { token: proposed.action.token }, status: 409 });
+  const audit = await json("/audit");
+  assert.ok(audit.some(row => row.action === "ai.action.create_student"));
+
+  await sleep(850);
+  const demo = await json("/ai/ask", { body: { question: "Remove the example students" } });
+  assert.equal(demo.action.operation, "remove_demo_students");
+  assert.equal(demo.action.confirmationPhrase, "REMOVE DEMO");
+  assert.ok(demo.action.impact.students >= 100);
+  await json("/ai/actions/execute", { body: { token: demo.action.token, confirmation: "yes" }, status: 422 });
+  assert.equal((await json("/workspace")).data.students.some(student => student.code === "DEMO001"), true);
+  // File knowledge is separate from roster imports and is per administrator.
+  const documentHeaders = new Headers(adminHeaders);
+  documentHeaders.set("content-type", "application/octet-stream");
+  documentHeaders.set("x-document-name", encodeURIComponent("batch source.docx"));
+  assert.equal((await json("/ai/documents", { headers: studentHeaders, status: 403 })).error !== undefined, true);
+  const documentResponse = await fetch(base + "/api/ai/documents", {
+    method: "POST", headers: documentHeaders, body: historicalDocx(),
+  });
+  const documentSaved = await documentResponse.json();
+  assert.equal(documentResponse.status, 201, JSON.stringify(documentSaved));
+  assert.match(documentSaved.summary, /NOT imported/i);
+  assert.equal((await json("/ai/documents")).documents.length, 1);
+  assert.equal((await json("/ai/documents", { headers: studentHeaders, status: 403 })).error !== undefined, true);
+  const repeats = await fetch(base + "/api/ai/documents", {
+    method: "POST", headers: documentHeaders, body: historicalDocx(),
+  });
+  assert.equal(repeats.status, 201);
+  assert.equal((await repeats.json()).id, documentSaved.id, "Same evidence must deduplicate by content hash");
+  await sleep(850);
+  const fromFile = await json("/ai/ask", { body: { question: "What does my attached batch source file say about Candidate 1?" } });
+  assert.match(fromFile.answer, /batch source/i);
+  await json("/ai/documents", { method: "DELETE", headers: { ...adminHeaders, Origin: "https://attacker.example" }, status: 403 });
+  assert.equal((await json("/ai/documents")).documents.length, 1);
+  assert.equal((await json("/ai/documents", { method: "DELETE" })).removed, 1);
+  assert.deepEqual((await json("/ai/documents")).documents, []);
+  // The confirmed clean-up is verified at the end of smoke, after all other
+  // reports and role-specific tests have used the synthetic fixture.
+  return { demoCleanupToken: demo.action.token };
 }
