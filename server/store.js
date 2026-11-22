@@ -57,6 +57,16 @@ export async function setup(db) {
       action text NOT NULL,
       target text NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS niyam_ai_messages (
+      id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      account_id uuid NOT NULL REFERENCES niyam_accounts(id) ON DELETE CASCADE,
+      role text NOT NULL CHECK (role IN ('user','assistant')),
+      body text NOT NULL,
+      event_id text,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS niyam_ai_messages_account_id
+      ON niyam_ai_messages (account_id, id DESC);
     INSERT INTO niyam_workspace(data) VALUES ('{"events":[],"sittings":[],"rooms":[],"faculty":[],"students":[],"enrollments":[],"leaves":[],"runs":[],"imports":[],"references":[]}') ON CONFLICT DO NOTHING;
     UPDATE niyam_workspace SET data=jsonb_set(data,'{references}','[]'::jsonb,true) WHERE NOT (data ? 'references');
   `);
