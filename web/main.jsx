@@ -3881,7 +3881,7 @@ function Assistant({ eventId, close, onAttach }) {
           </div>
         )}
         {messages.map((message, i) => (
-          <p key={i} className={"message " + message.role}>
+          <p key={i} className={"message message-" + message.role}>
             {message.text}
           </p>
         ))}

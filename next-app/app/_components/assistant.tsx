@@ -71,7 +71,7 @@ export function Assistant({ eventId, close, onAttach }: { eventId: string; close
           </div>
         )}
         {messages.map((message, i) => (
-          <p key={i} className={"message " + message.role}>
+          <p key={i} className={"message message-" + message.role}>
             {message.text}
           </p>
         ))}

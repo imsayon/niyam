@@ -214,6 +214,21 @@ try {
     const appearance = page.getByRole("button", { name: "Toggle appearance" }).last();
     await appearance.click();
     await appearance.click();
+    await page.route("**/api/ai/history", (route) =>
+      route.fulfill({ json: { messages: [{ role: "assistant", text: "Saved seating answer." }] } }),
+    );
+    await page.route("**/api/ai/ask", (route) =>
+      route.fulfill({ json: { answer: "Follow-up seating answer." } }),
+    );
+    await page.getByRole("button", { name: "Open Niyam assistant" }).click();
+    await page.getByText("Saved seating answer.", { exact: true }).waitFor();
+    const composer = page.getByRole("textbox", { name: "Message", exact: true });
+    await composer.click({ timeout: 2500 });
+    await composer.fill("Which room is in use?");
+    await page.getByRole("button", { name: "Send message" }).click();
+    await page.getByText("Follow-up seating answer.", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Close assistant" }).click();
+    await composer.waitFor({ state: "hidden" });
     await page.getByRole("button", { name: "Sign out" }).click();
     await page.getByRole("heading", { name: "Welcome back." }).waitFor();
     await page.setViewportSize({ width: 390, height: 844 });
