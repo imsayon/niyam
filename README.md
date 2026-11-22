@@ -25,7 +25,7 @@ For frontend development, run `npm run dev` in a second terminal. Set `DEV_ORIGI
 
 ## Firebase emulator
 
-The separate Niyam Firebase project has project ID `proctor-flow` and uses Spark. Run the Firebase version against the loopback Emulator Suite under `demo-niyam-local`. The public demo currently runs on Render.
+Run Niyam against the loopback Firebase Emulator Suite under `demo-niyam-local`. The public site runs on Render with PostgreSQL and Neon Auth for Google sign-in.
 
 With Node 22 LTS and Java 21 or later, run `npm ci`, `npm run build:firebase`, and `npm run emulators`. In a second terminal, run `npm run seed:firebase`, then open http://127.0.0.1:5000. The seed provisions the ISE demo admin and adds synthetic records to an empty workspace. The login is for the loopback demo only.
 
@@ -83,7 +83,7 @@ To enable roster-based Google sign-in, set `NEON_AUTH_URL` and an independent, r
 
 `npm test` runs solver regressions. Set `TEST_DATABASE_URL` to run the API integration tests in isolated temporary schemas. CI provides PostgreSQL and runs the tests and production frontend build. Windows and Linux packaging runs on release tags.
 
-The current desktop release predates Google sign-in. The desktop authentication flow and Windows installation smoke test need an update before the next desktop release.
+Windows releases include an installation smoke test. Google sign-in opens in the system browser.
 
 The Niyam repository contains the application source, CI workflows, documentation, and desktop releases. Its homepage links to the live website, which deploys directly from the same repository. The app's public download link points to the release asset and includes its SHA-256 checksum in the release metadata.
 
@@ -91,7 +91,7 @@ The Niyam repository contains the application source, CI workflows, documentatio
 
 Run `node --env-file=.env scripts/backup.js` to create a consistent ignored backup with restrictive filesystem permissions. It includes operational records, account hashes, audit records, and encrypted provider settings. Session and recovery tokens are excluded. To restore into an empty database, run `node --env-file=.env scripts/backup.js restore /absolute/path/to/backup.json`. Preserve the original encryption key separately.
 
-No ProctorFlow production data has been migrated. The original repository and deployment remain the owner's cutover source. Obtain a consistent Firebase export, reconcile identifiers and enrollment, and rehearse in an isolated database before using real institutional records. Archive the legacy project only after an approved cutover.
+Before changing the live backend, verify sign-in, access controls, and an allocation in the replacement workspace. Keep a private backup of existing records until the cutover is verified.
 
 ## Current limitations
 
