@@ -195,6 +195,12 @@ try {
   }
   const browser = await chromium.launch({ headless: true });
   try {
+    const noScripts = await browser.newPage({ javaScriptEnabled: false });
+    await noScripts.goto(base);
+    assert.equal(await noScripts.locator("form").getAttribute("method"), "post");
+    assert.equal(await noScripts.getByLabel("Password", { exact: true }).isDisabled(), true);
+    assert.equal(await noScripts.getByRole("button", { name: "Sign in", exact: true }).isDisabled(), true);
+    await noScripts.close();
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.goto(base, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Welcome back." }).waitFor({ timeout: 15000 });

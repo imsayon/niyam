@@ -194,6 +194,7 @@ export function SettingsPage({
           <Badge>{account.role}</Badge>
         </div>
         <form
+          method="post"
           className="dialog-content"
           onSubmit={async (e) => {
             e.preventDefault();
@@ -319,6 +320,7 @@ export function SettingsPage({
             </p>
             {account.role === "admin" && (
               <form
+                method="post"
                 onSubmit={async (e) => {
                   e.preventDefault();
                   const model = new FormData(e.currentTarget).get("model");

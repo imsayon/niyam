@@ -13,7 +13,9 @@ export function Login({ session, login, notify, theme, setTheme }: { session: Se
     [busy, setBusy] = useState(false),
     [release, setRelease] = useState<Release | null>(null);
   const [role, setRole] = useState<Role>("admin");
+  const [interactive, setInteractive] = useState(false);
   useEffect(() => {
+    setInteractive(true);
     const selected = new URLSearchParams(location.search).get("role");
     if (selected === "faculty" || selected === "student") setRole(selected);
   }, []);
@@ -195,7 +197,7 @@ export function Login({ session, login, notify, theme, setTheme }: { session: Se
                 aria-selected={item === role}
                 aria-controls="sign-in-panel"
                 tabIndex={item === role ? 0 : -1}
-                disabled={busy}
+                disabled={busy || !interactive}
                 onClick={() => {
                   setRole(item);
                   setMode("login");
@@ -215,13 +217,13 @@ export function Login({ session, login, notify, theme, setTheme }: { session: Se
                 className="button primary login-google"
                 type="button"
                 onClick={signInWithGoogle}
-                disabled={busy}
+                disabled={busy || !interactive}
               >
                 {busy ? "Connecting…" : "Continue with Google"}
                 <ArrowRight size={18} />
               </button>
             ) : (
-              <form key={role + mode} onSubmit={submit}>
+              <form method="post" key={role + mode} onSubmit={submit}>
                 {mode === "register" && (
                   <>
                     <Field label="Full name">
@@ -247,6 +249,7 @@ export function Login({ session, login, notify, theme, setTheme }: { session: Se
                   <Field label="Password">
                     <input
                       name="password"
+                      disabled={!interactive}
                       type="password"
                       minLength={mode === "register" ? 12 : 1}
                       maxLength={128}
@@ -260,7 +263,7 @@ export function Login({ session, login, notify, theme, setTheme }: { session: Se
                     />
                   </Field>
                 )}
-                <button className="button primary" disabled={busy}>
+                <button className="button primary" disabled={busy || !interactive}>
                   {busy
                     ? "Please wait…"
                     : mode === "login"
@@ -334,6 +337,7 @@ export function AccountLink({ notify }: { notify: Notify }) {
   if (!purpose) return null;
   return (
     <form
+      method="post"
       className="token-form"
       onSubmit={async (event) => {
         event.preventDefault();
