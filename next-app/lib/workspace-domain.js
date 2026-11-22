@@ -140,7 +140,7 @@ export const schemas = {
   }),
 };
 
-export export function fail(message, status = 422) {
+export function fail(message, status = 422) {
   throw new ApiError(status, message);
 }
 export function get(rows, key) {
@@ -226,7 +226,7 @@ export function validate(data, kind, row) {
       fail("Leave end date must fall on or after the start date.");
   }
 }
-export export function update(data, kind, row) {
+export function update(data, kind, row) {
   validate(data, kind, row);
   const index = data[kind].findIndex((item) => item.id === row.id);
   if (index === -1) data[kind].push(row);
