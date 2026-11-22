@@ -1,9 +1,11 @@
-name: Verify and package Niyam
+name: Verify, package and release Niyam
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -31,8 +33,9 @@ jobs:
         env:
           TEST_DATABASE_URL: postgresql://niyam:ci-only-password@localhost:5432/niyam_test
       - run: npm run build
+
   windows:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push'
     runs-on: windows-latest
     needs: verify
     steps:
@@ -42,12 +45,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm pkg set "version=0.2.${{ github.run_number }}" --prefix desktop
       - run: npm run desktop:win -- --publish never
       - name: Install and verify Windows client
-        if: github.event_name == 'push'
         shell: pwsh
         env:
-          NIYAM_STUDENT_PASSWORD: ${{ secrets.NIYAM_STUDENT_PASSWORD }}
+          NIYAM_ADMIN_PASSWORD: ${{ secrets.NIYAM_ADMIN_PASSWORD }}
         run: |
           $installer = (Get-ChildItem release/*.exe | Select-Object -First 1).FullName
           Start-Process -FilePath $installer -ArgumentList '/S' -Wait
@@ -65,9 +68,10 @@ jobs:
         with:
           name: Niyam-Windows-x64
           path: release/*.exe
-          retention-days: 14
+          retention-days: 30
+
   linux:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     needs: verify
     steps:
@@ -77,9 +81,30 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm pkg set "version=0.2.${{ github.run_number }}" --prefix desktop
       - run: npm run desktop:linux -- --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: Niyam-Linux-x64
           path: release/*.AppImage
-          retention-days: 14
+          retention-days: 30
+
+  publish:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    needs: [verify, windows, linux]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Niyam-*
+          path: release
+          merge-multiple: true
+      - name: Checksum assets
+        run: cd release && sha256sum *.exe *.AppImage > SHA256SUMS
+      - name: Publish release in the source repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v0.2.${{ github.run_number }}"             release/*.exe release/*.AppImage release/SHA256SUMS             --repo "${{ github.repository }}"             --target "${{ github.sha }}"             --title "Niyam 0.2.${{ github.run_number }}"             --notes "Automated Windows and Linux builds from verified commit ${{ github.sha }}. Windows is unsigned and requires an internet connection. Google desktop sign-in uses an approved system-browser handoff."
