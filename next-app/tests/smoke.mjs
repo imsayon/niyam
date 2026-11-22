@@ -90,9 +90,16 @@ try {
   const roleScoped = await fetch(base + "/api/workspace", { headers: { Cookie: cookie } });
   assert.equal(roleScoped.status, 200);
   assert.ok((await roleScoped.json()).data.events.length > 0);
-  const crossFramework = await fetch(base + "/api/ai/status", { headers: { Cookie: cookie } });
-  assert.equal(crossFramework.status, 200, "Legacy API must accept the Next session");
-  assert.equal(typeof (await crossFramework.json()).enabled, "boolean");
+  const nativeAiStatus = await fetch(base + "/api/ai/status", { headers: { Cookie: cookie } });
+  assert.equal(nativeAiStatus.status, 200, "Next AI config read must work");
+  const nativeAi = await nativeAiStatus.json();
+  assert.equal(typeof nativeAi.enabled, "boolean");
+  assert.equal(typeof nativeAi.model, "string");
+  assert.equal(nativeAi.key, undefined, "Never expose provider secret");
+  // Still-unmigrated export route proves the compatibility bridge works.
+  const legacyExport = await fetch(base + "/api/export/demo-event/timetable.pdf");
+  assert.equal(legacyExport.status, 401, "Legacy Express API must enforce unauthenticated access");
+  assert.equal((await fetch(base + "/api/ai/status")).status, 401);
   const history = await fetch(base + "/api/ai/history", { headers: { Cookie: cookie } });
   assert.equal(history.status, 200);
   assert.deepEqual((await history.json()).messages, []);
