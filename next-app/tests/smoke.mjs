@@ -236,14 +236,25 @@ try {
     await page.getByRole("tab", { name: "Admin" }).click();
     await page.getByRole("heading", { name: "Welcome back." }).waitFor();
   } finally { await browser.close(); }
+  // The browser login/logout journey can rotate sessions; test the approved
+  // cleanup under a freshly authenticated administrator session.
+  const finalLogin = await fetch(base + "/api/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: base },
+    body: JSON.stringify({ email: "admin.niyam@dsce.edu.in", password: passwords.admin, role: "admin" }),
+  });
+  assert.equal(finalLogin.status, 200, await finalLogin.text().catch(() => ""));
+  const finalCookie = finalLogin.headers.get("set-cookie")?.split(";")[0];
+  assert.ok(finalCookie?.startsWith("niyam="));
+  const finalHeaders = { ...adminHeaders, Cookie: finalCookie };
   const cleanup = await fetch(base + "/api/ai/actions/execute", {
-    method: "POST", headers: adminHeaders,
+    method: "POST", headers: finalHeaders,
     body: JSON.stringify({ token: demoCleanupToken, confirmation: "REMOVE DEMO" }),
   });
   const cleanupJson = await cleanup.json();
   assert.equal(cleanup.status, 200, JSON.stringify(cleanupJson));
   assert.ok(cleanupJson.result.removedStudents >= 100);
-  const afterDemo = await (await fetch(base + "/api/workspace", { headers: adminHeaders })).json();
+  const afterDemo = await (await fetch(base + "/api/workspace", { headers: finalHeaders })).json();
   assert.equal(afterDemo.data.students.some(item => /^DEMO\d+$/i.test(item.code)), false);
   assert.equal(afterDemo.data.students.some(item => item.code === "AITEST001"), true);
   console.log("Next App Router, PostgreSQL, native auth/role boundaries and browser smoke passed");
