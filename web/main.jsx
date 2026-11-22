@@ -3319,11 +3319,17 @@ function Imports({
               {preview.items.length} valid rows · {preview.errors.length}{" "}
               {preview.errors.length === 1 ? "error" : "errors"}
             </h3>
-            {preview.errors.map((error, index) => (
+            {preview.errors.slice(0, 20).map((error, index) => (
               <p className="inline-error" key={index}>
                 Row {error.row} · {error.message}
               </p>
             ))}
+            {preview.errors.length > 20 && (
+              <p className="micro" role="status">
+                Showing 20 of {preview.errors.length} errors. Correct the
+                source or choose the compatible record type before importing.
+              </p>
+            )}
             <Table headers={["Source row", "Action", "Record"]}>
               {preview.items.slice(0, 20).map((item) => (
                 <tr key={item.record.id}>
