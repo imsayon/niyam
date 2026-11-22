@@ -35,12 +35,14 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "desktop/icon.png"
+      "icon": "desktop/icon.png",
+      "artifactName": "Niyam-Setup-x64.exe"
     },
     "linux": {
       "target": "AppImage",
       "category": "Education",
-      "icon": "desktop/icon.png"
+      "icon": "desktop/icon.png",
+      "artifactName": "Niyam-x86_64.AppImage"
     }
   },
   "dependencies": {

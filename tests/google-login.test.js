@@ -189,6 +189,36 @@ test(
     assert.equal(account.email, address);
     assert.equal(account.passwordLogin, false);
     assert.equal((await request("/api/accounts", { cookie })).status, 403);
+    const pending = await request("/api/session/desktop/start", {
+      body: { role: "student" },
+    });
+    assert.equal(pending.status, 200);
+    const { requestId, verifier } = await pending.json();
+    const exchange = (value) => request("/api/session/desktop/exchange", {
+      body: { requestId, verifier: value },
+    });
+    assert.equal((await exchange(verifier)).status, 202);
+    assert.equal((await exchange("X".repeat(43))).status, 410);
+    assert.equal(
+      (await request("/api/session/desktop/approve", {
+        body: { requestId }, cookie: adminCookie,
+      })).status,
+      403,
+    );
+    assert.equal(
+      (await request("/api/session/desktop/approve", {
+        body: { requestId }, cookie,
+      })).status,
+      200,
+    );
+    const desktopSession = await exchange(verifier);
+    assert.equal(desktopSession.status, 200);
+    const desktopCookie = sessionCookie(desktopSession);
+    assert.equal(
+      (await (await request("/api/session", { cookie: desktopCookie })).json()).account.role,
+      "student",
+    );
+    assert.equal((await exchange(verifier)).status, 410);
     await seedDemo(db, {
       admin: password,
       faculty: password,

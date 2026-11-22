@@ -224,6 +224,22 @@ function App() {
   );
   const [ai, setAi] = useState(false),
     [connected, setConnected] = useState(true);
+  const [desktopApproval, setDesktopApproval] = useState(() => {
+    if (window.niyamDesktop) return null;
+    const id = new URLSearchParams(location.search).get("desktop");
+    if (id && /^[0-9a-f-]{36}$/i.test(id))
+      sessionStorage.setItem("niyam-desktop-request", id);
+    return sessionStorage.getItem("niyam-desktop-request");
+  });
+  const [pairBusy, setPairBusy] = useState(false);
+  const dismissDesktopApproval = () => {
+    sessionStorage.removeItem("niyam-desktop-request");
+    setDesktopApproval(null);
+    const url = new URL(location.href);
+    url.searchParams.delete("desktop");
+    url.searchParams.delete("role");
+    history.replaceState(null, "", url);
+  };
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("niyam-theme", theme);
@@ -745,6 +761,40 @@ function App() {
           )}
         </Dialog>
       )}
+      {desktopApproval && (
+        <Dialog title="Connect your Windows app" close={dismissDesktopApproval}>
+          <div className="dialog-content">
+            <p>
+              A Niyam desktop application is requesting access as your
+              <strong> {pretty(account.role)}</strong> account. Only approve
+              if you initiated this sign-in from your computer.
+            </p>
+            <button
+              className="button primary"
+              disabled={pairBusy}
+              onClick={async () => {
+                setPairBusy(true);
+                try {
+                  await send("/session/desktop/approve", {
+                    requestId: desktopApproval,
+                  });
+                  dismissDesktopApproval();
+                  notify("Desktop sign-in approved. You can return to Niyam for Windows.");
+                } catch (error) {
+                  notify(error.message, true);
+                } finally {
+                  setPairBusy(false);
+                }
+              }}
+            >
+              {pairBusy ? "Approving…" : "Approve desktop sign-in"}
+            </button>
+            <button className="button" onClick={dismissDesktopApproval}>
+              Cancel
+            </button>
+          </div>
+        </Dialog>
+      )}
       {notice && <Toast notice={notice} close={() => setNotice(null)} />}
     </div>
   );
@@ -827,6 +877,25 @@ function Login({ session, login, notify, theme, setTheme }) {
             send("/session", value),
           )),
         });
+      } else if (window.niyamDesktop?.openLogin) {
+        const { requestId, verifier, url } = await send(
+          "/session/desktop/start",
+          { role },
+        );
+        await window.niyamDesktop.openLogin(url);
+        for (let attempt = 0; attempt < 270; attempt++) {
+          const result = await send("/session/desktop/exchange", {
+            requestId,
+            verifier,
+          });
+          if (!result.pending) {
+            login({ ...session, account: result.account });
+            setBusy(false);
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+        throw new Error("Desktop sign-in expired. Please try again.");
       } else {
         const { url } = await send("/session/google", { role });
         location.assign(url);

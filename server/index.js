@@ -14,6 +14,14 @@ export function application(db) {
   const app = express();
   const origin = process.env.PUBLIC_ORIGIN || process.env.RENDER_EXTERNAL_URL;
   const download = process.env.INSTALLER_URL;
+  // Stable, version-independent link. Legacy v0.1.0 overrides must not
+  // advertise an installer that predates roster-based Google sign-in.
+  const latest = "https://github.com/imsayon/niyam/releases/latest/download/Niyam-Setup-x64.exe";
+  const obsolete = !!download && (
+    download.includes("imsayon/niyam-downloads/") ||
+    download.includes("imsayon/niyam/releases/download/v0.1.0/")
+  );
+  const installer = !download || obsolete ? latest : download;
   if (origin?.startsWith("https://")) app.set("trust proxy", 1);
   app.disable("x-powered-by");
   app.use((req, res, next) => {
@@ -44,8 +52,8 @@ export function application(db) {
       () => false,
     );
     res.json({
-      windows: download || (exists ? "/downloads/Niyam-Setup.exe" : null),
-      sha256: process.env.INSTALLER_SHA256 || null,
+      windows: exists && !origin ? "/downloads/Niyam-Setup.exe" : installer,
+      sha256: installer === download ? process.env.INSTALLER_SHA256 || null : null,
     });
   });
   accountApi(app, db, origin);

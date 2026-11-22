@@ -198,6 +198,84 @@ export function accountApi(app, db, origin) {
       .json({ account: publicAccount(account) });
   });
 
+  // Desktop Google OAuth runs in the system browser, never inside an
+  // embedded Electron webview. The verifier remains in the desktop client;
+  // the browser receives only a public request ID and must explicitly approve.
+  app.post("/api/session/desktop/start", async (req, res) => {
+    if (!google || !origin)
+      throw new HttpError(503, "Desktop Google sign-in is not configured.");
+    limit(req, "desktop-start");
+    const { role: selectedRole } = z.object({ role }).parse(req.body);
+    const requestId = randomUUID();
+    const verifier = token();
+    await db.query("DELETE FROM niyam_desktop_logins WHERE expires_at < now()");
+    await db.query(
+      `INSERT INTO niyam_desktop_logins(request_id,token_hash,role,expires_at)
+       VALUES ($1,$2,$3,now() + interval '10 minutes')`,
+      [requestId, digest(verifier), selectedRole],
+    );
+    const openUrl = new URL("/", origin);
+    openUrl.searchParams.set("desktop", requestId);
+    openUrl.searchParams.set("role", selectedRole);
+    res.json({ requestId, verifier, url: openUrl.href });
+  });
+
+  app.post("/api/session/desktop/approve", async (req, res) => {
+    const account = requireRole(req, "faculty", "student");
+    const { requestId } = z.object({ requestId: z.uuid() }).parse(req.body);
+    const { rowCount } = await db.query(
+      `UPDATE niyam_desktop_logins
+       SET account_id=$2, approved_at=now()
+       WHERE request_id=$1 AND role=$3 AND approved_at IS NULL
+         AND expires_at>now()`,
+      [requestId, account.id, account.role],
+    );
+    if (!rowCount)
+      throw new HttpError(409, "This desktop request has expired or belongs to another role.");
+    await audit(db, account.id, "session.desktop_approved", requestId);
+    res.json({ ok: true });
+  });
+
+  app.post("/api/session/desktop/exchange", async (req, res) => {
+    const { requestId, verifier } = z.object({
+      requestId: z.uuid(),
+      verifier: z.string().min(43).max(100),
+    }).parse(req.body);
+    const result = await transaction(db, async (client) => {
+      const { rows: [row] } = await client.query(
+        `SELECT d.account_id,d.role,d.approved_at,a.id,a.email,a.name,
+                a.status,a.roster_id,a.password_hash
+         FROM niyam_desktop_logins d
+         LEFT JOIN niyam_accounts a ON a.id=d.account_id
+         WHERE d.request_id=$1 AND d.token_hash=$2
+           AND d.expires_at>now()
+         FOR UPDATE OF d`,
+        [requestId, digest(verifier)],
+      );
+      if (!row) return { expired: true };
+      if (!row.approved_at) return { pending: true };
+      if (!row.id || row.status !== "active" || row.role !== "student" && row.role !== "faculty")
+        return { expired: true };
+      const { rows: [workspace] } = await client.query(
+        "SELECT data FROM niyam_workspace WHERE id",
+      );
+      const roster = workspace.data[row.role === "faculty" ? "faculty" : "students"];
+      if (!roster.some((person) => person.id === row.roster_id &&
+            person.email?.toLowerCase() === row.email.toLowerCase()))
+        return { expired: true };
+      await client.query(
+        "DELETE FROM niyam_desktop_logins WHERE request_id=$1",
+        [requestId],
+      );
+      return { value: await createSession(client, req, row), account: publicAccount(row) };
+    });
+    if (result.pending) return res.status(202).json({ pending: true });
+    if (result.expired)
+      throw new HttpError(410, "The desktop sign-in request expired. Try again.");
+    res.cookie("niyam", result.value, { ...cookie, maxAge })
+      .json({ account: result.account });
+  });
+
   if (google) {
     app.post("/api/session/google", async (req, res) => {
       limit(req, "google");
