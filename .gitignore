@@ -9,3 +9,6 @@ playwright-report/
 firebase-debug*.log
 firestore-debug.log
 firebase-export-*/
+
+next-app/.next/
+next-app/*.tsbuildinfo

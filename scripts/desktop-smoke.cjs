@@ -1,9 +1,27 @@
 const { _electron: electron, expect } = require("@playwright/test");
 const fs = require("node:fs/promises");
+const { origin } = require("../desktop/target.json");
+const evidence = "local/desktop-evidence";
 
 (async () => {
   if (!process.env.NIYAM_DESKTOP_PATH)
     throw Error("NIYAM_DESKTOP_PATH is required");
+  const expectedSha = process.env.NIYAM_EXPECTED_SHA;
+  const password = process.env.NIYAM_ADMIN_PASSWORD;
+  if (new URL(origin).protocol !== "https:") throw Error("Expected HTTPS");
+  if (expectedSha) {
+    if (!password) throw Error("A preview admin password is required");
+    await expect.poll(async () => {
+      try {
+        const response = await fetch(new URL("/api/health", origin), {
+          signal: AbortSignal.timeout(10000),
+        });
+        if (response.ok) return (await response.json()).version;
+      } catch {
+        // Wait for the acceptance service to finish deploying.
+      }
+    }, { timeout: 240000, intervals: [2000, 4000, 8000] }).toBe(expectedSha);
+  }
   const application = await electron.launch({
     executablePath: process.env.NIYAM_DESKTOP_PATH,
   });
@@ -14,6 +32,7 @@ const fs = require("node:fs/promises");
     await expect(window.getByRole("tab", { name: "Admin" })).toBeVisible({
       timeout: 120000,
     });
+    expect(new URL(window.url()).origin).toBe(origin);
     await expect(window.getByRole("tab", { name: "Faculty" })).toBeVisible();
     await expect(window.getByRole("tab", { name: "Student" })).toBeVisible();
     const bridge = await window.evaluate(() =>
@@ -25,35 +44,38 @@ const fs = require("node:fs/promises");
       window.getByRole("button", { name: "Continue with Google" }),
     ).toBeVisible();
     await window.getByRole("tab", { name: "Admin" }).click();
-    if (process.env.NIYAM_ADMIN_PASSWORD) {
-      await window.getByLabel("Email address").fill("admin.niyam@dsce.edu.in");
+    await fs.mkdir(evidence, { recursive: true });
+    await window.screenshot({ path: `${evidence}/windows-sign-in.png`, fullPage: true });
+    if (password) {
+      await expect(window.getByLabel("Email address")).toHaveValue("admin.niyam@dsce.edu.in");
       await window
         .getByLabel("Password", { exact: true })
-        .fill(process.env.NIYAM_ADMIN_PASSWORD);
+        .fill(password);
       await window.getByRole("button", { name: "Sign in", exact: true }).click();
       await expect(
         window.getByRole("heading", { name: "A clear view. Every exam." }),
       ).toBeVisible({ timeout: 60000 });
-      const result = await window.evaluate(async () =>
-        (await fetch("/api/workspace")).json(),
-      );
-      if (!result.data?.students?.length)
-        throw Error("The administrator could not read the workspace");
       await window.reload();
       await expect(
         window.getByRole("heading", { name: "A clear view. Every exam." }),
       ).toBeVisible();
+      const account = await window.evaluate(async () => {
+        const session = await fetch("/api/session");
+        const workspace = await fetch("/api/workspace");
+        return session.ok && workspace.ok
+          && (await session.json()).account?.role === "admin"
+          && (await workspace.json()).data?.students?.length > 0;
+      });
+      if (!account) throw Error("The installed app lost access to the admin workspace after reloading");
+      if (expectedSha) {
+        await window.screenshot({ path: `${evidence}/windows-workspace.png`, fullPage: true });
+      }
       console.log("Windows installer: admin sign-in and session retention verified");
     } else {
       console.log(
         "Windows installer: landing and desktop bridge verified; authenticated smoke skipped (NIYAM_ADMIN_PASSWORD not set)",
       );
     }
-    await fs.mkdir("local/desktop-evidence", { recursive: true });
-    await window.screenshot({
-      path: "local/desktop-evidence/windows-smoke.png",
-      fullPage: true,
-    });
     if (failures.length) throw Error(failures.join("\n"));
   } finally {
     await application.close();

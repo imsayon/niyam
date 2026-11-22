@@ -2,7 +2,9 @@ name: Verify, package and release Niyam
 on:
   push:
     branches: [main]
+    tags: ['niyam-candidate-*']
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 
@@ -35,9 +37,14 @@ jobs:
       - run: npm run build
 
   windows:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main')
     runs-on: windows-latest
+    timeout-minutes: 20
     needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(github.ref == 'refs/heads/main' && '["production"]' || '["preview","production"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,33 +52,47 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Target the acceptance site
+        if: matrix.target == 'preview'
+        shell: pwsh
+        run: |
+          '{"origin":"https://niyam-next-acceptance.onrender.com"}' | Set-Content desktop/target.json -Encoding utf8NoBOM
       - run: npm pkg set "version=0.2.${{ github.run_number }}" --prefix desktop
       - run: npm run desktop:win -- --publish never
       - name: Install and verify Windows client
         shell: pwsh
         env:
-          NIYAM_ADMIN_PASSWORD: ${{ secrets.NIYAM_ADMIN_PASSWORD }}
+          NIYAM_PREVIEW_ADMIN_PASSWORD: ${{ matrix.target == 'preview' && secrets.NIYAM_PREVIEW_ADMIN_PASSWORD || '' }}
+          NIYAM_ADMIN_PASSWORD: ${{ matrix.target == 'production' && github.ref == 'refs/heads/main' && secrets.NIYAM_ADMIN_PASSWORD || '' }}
+          NIYAM_EXPECTED_SHA: ${{ matrix.target == 'preview' && github.sha || '' }}
         run: |
-          $installer = (Get-ChildItem release/*.exe | Select-Object -First 1).FullName
-          Start-Process -FilePath $installer -ArgumentList '/S' -Wait
+          if ($env:NIYAM_EXPECTED_SHA) {
+            if (-not $env:NIYAM_PREVIEW_ADMIN_PASSWORD) { throw 'The acceptance admin password is required' }
+            $env:NIYAM_ADMIN_PASSWORD = $env:NIYAM_PREVIEW_ADMIN_PASSWORD
+          }
+          $installer = (Get-Item release/Niyam-Setup-x64.exe).FullName
+          $process = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "The installer exited with code $($process.ExitCode)" }
           $installed = Get-ChildItem "$env:LOCALAPPDATA/Programs" -Filter Niyam.exe -Recurse | Select-Object -First 1
           if (-not $installed) { throw 'Installer did not create Niyam.exe' }
           $env:NIYAM_DESKTOP_PATH = $installed.FullName
           node scripts/desktop-smoke.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $digest = (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLowerInvariant()
+          "$digest  Niyam-Setup-x64.exe" | Set-Content local/desktop-evidence/windows-installer.sha256
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Windows-verification
+          name: Windows-verification-${{ matrix.target }}
           path: local/desktop-evidence/
       - uses: actions/upload-artifact@v4
         with:
-          name: Niyam-Windows-x64
+          name: ${{ matrix.target == 'preview' && 'Niyam-Preview-Windows-x64' || 'Niyam-Windows-x64' }}
           path: release/*.exe
           retention-days: 30
 
   linux:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     needs: verify
     steps:
@@ -90,7 +111,7 @@ jobs:
           retention-days: 30
 
   publish:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     needs: [verify, windows, linux]
     permissions:

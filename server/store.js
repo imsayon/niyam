@@ -70,6 +70,17 @@ export async function setup(db) {
     );
     CREATE INDEX IF NOT EXISTS niyam_ai_messages_account_id
       ON niyam_ai_messages (account_id, id DESC);
+    CREATE TABLE IF NOT EXISTS niyam_ai_documents (
+      id uuid PRIMARY KEY,
+      account_id uuid NOT NULL REFERENCES niyam_accounts(id) ON DELETE CASCADE,
+      file_name text NOT NULL,
+      content_hash text NOT NULL,
+      extracted_text text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE(account_id, content_hash)
+    );
+    CREATE INDEX IF NOT EXISTS niyam_ai_documents_account_time
+      ON niyam_ai_documents (account_id, created_at DESC);
     INSERT INTO niyam_workspace(data) VALUES ('{"events":[],"sittings":[],"rooms":[],"faculty":[],"students":[],"enrollments":[],"leaves":[],"runs":[],"imports":[],"references":[]}') ON CONFLICT DO NOTHING;
     UPDATE niyam_workspace SET data=jsonb_set(data,'{references}','[]'::jsonb,true) WHERE NOT (data ? 'references');
   `);
@@ -102,6 +113,7 @@ export async function snapshot(db) {
   const {
     rows: [row],
   } = await db.query("SELECT revision, data FROM niyam_workspace WHERE id");
+  if (!row) throw new HttpError(503, "Workspace is unavailable.");
   if (!row.data.references) row.data.references = [];
   return row;
 }
@@ -128,6 +140,7 @@ export async function change(
     } = await client.query(
       "SELECT revision, data FROM niyam_workspace WHERE id FOR UPDATE",
     );
+    if (!row) throw new HttpError(503, "Workspace is unavailable.");
     if (revision !== row.revision)
       throw new HttpError(409, "The workspace changed. Refresh and try again.");
     // Earlier demo fixtures did not contain this optional collection.

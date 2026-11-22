@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyRows } from "../server/import-classifier.js";
+import { classifyRows, classifyDocx } from "../server/import-classifier.js";
 import { fixture } from "../server/fixture.js";
 import { importRows } from "../server/workspace.js";
-import { isHistoricalBatchDocument, prepareStudentRoster } from "../shared/historical-roster.js";
+import { isHistoricalBatchDocument, prepareStudentRoster, reviewStudentRoster } from "../shared/historical-roster.js";
 
 test("infers official timetable and directory destinations from their columns", () => {
   const timetable = {
@@ -159,4 +159,36 @@ test("an existing student USN is an update, not another student", () => {
   assert.equal(reviewed.items[0].record.id, existing.id);
   assert.equal(reviewed.items[0].record.email, existing.email);
   assert.equal(data.students[0].name, existing.name);
+});
+
+
+test("batch student roster consolidates identical repeated USNs but retains identity conflicts", () => {
+  const sample = {
+    type: "historical-lab-batch",
+    studentId: "1DS24IS007", studentName: "Test Student",
+    source: { fileName: "batch.docx", table: 1, row: 2 },
+  };
+  const review = reviewStudentRoster([
+    sample,
+    { ...sample, studentId: " 1ds24is007 ", source: { ...sample.source, row: 3 } },
+    { ...sample, studentName: "Different Student", source: { ...sample.source, row: 4 } },
+  ], { department: "ISE", semester: 3 });
+  assert.equal(review.identicalDuplicates, 1);
+  assert.equal(review.conflicts.length, 1);
+  assert.equal(review.conflicts[0].code, "1DS24IS007");
+  assert.equal(review.roster.length, 2);
+  assert.deepEqual(review.roster[0], {
+    code: "1DS24IS007", name: "Test Student",
+    department: "ISE", semester: 3, email: "",
+  });
+});
+
+test("DOCX lab batches are recognized as student identity sources, not automatically enrolled", () => {
+  const classified = classifyDocx(
+    ["III Semester Lab Batches 2025-26"],
+    [{ rows: [["USN", "Name"], ["1DS24IS007", "Test Student"]] }],
+  );
+  assert.equal(classified.destination, "students");
+  assert.equal(classified.referenceType, "historical-lab-batch");
+  assert.match(classified.evidence.join(" "), /current exam enrollment/i);
 });

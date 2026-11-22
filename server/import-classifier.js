@@ -102,13 +102,13 @@ export function classifyDocx(paragraphs, tables) {
       0,
     );
     return {
-      destination: "references",
+      destination: "students",
       referenceType: "historical-lab-batch",
       semester,
       term: year,
       evidence: [
         "Batch tables with student identifiers and an academic year were detected.",
-        `${rowCount} historical student rows are isolated as references, outside the exam candidate pool.`,
+        `${rowCount} student identifiers were found in batch tables. Confirm their CURRENT department and semester before creating or updating student records; an old lab list does not prove current exam enrollment.`,
       ],
       manualOverrideRequired: false,
     };

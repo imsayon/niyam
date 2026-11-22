@@ -11,7 +11,7 @@ import { outputApi } from "./outputs.js";
 import { documentApi } from "./documents.js";
 import { seedDemo } from "../scripts/seed.js";
 
-export function application(db, { serveFrontend = true } = {}) {
+export function application(db) {
   const app = express();
   const origin = process.env.PUBLIC_ORIGIN || process.env.RENDER_EXTERNAL_URL;
   const download = process.env.INSTALLER_URL;
@@ -65,18 +65,12 @@ export function application(db, { serveFrontend = true } = {}) {
   app.use("/api", (req, res) =>
     res.status(404).json({ error: "API endpoint not found." }),
   );
-  if (serveFrontend) {
-    app.use(
-      "/downloads",
-      express.static(resolve("public/downloads"), { fallthrough: false }),
-    );
-    app.use(express.static(resolve("dist")));
-    app.get("/{*path}", (req, res) => res.sendFile(resolve("dist/index.html")));
-  } else {
-    // During the Next.js migration, the API process must never serve an
-    // obsolete Vite bundle or a misleading HTML fallback for unknown paths.
-    app.use((req, res) => res.status(404).json({ error: "Not found." }));
-  }
+  app.use(
+    "/downloads",
+    express.static(resolve("public/downloads"), { fallthrough: false }),
+  );
+  app.use(express.static(resolve("dist")));
+  app.get("/{*path}", (req, res) => res.sendFile(resolve("dist/index.html")));
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
     if (error instanceof z.ZodError)

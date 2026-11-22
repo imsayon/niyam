@@ -1,0 +1,60 @@
+name: Niyam Next migration preview
+on:
+  pull_request:
+    paths:
+      - "next-app/**"
+      - "server/**"
+      - "shared/**"
+      - "package*.json"
+      - ".github/workflows/next-parallel.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  next-preview:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: niyam
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: niyam_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://niyam:ci-only-password@127.0.0.1:5432/niyam_test
+      NIYAM_SANDBOX: "1"
+      PUBLIC_ORIGIN: http://127.0.0.1:4318
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            next-app/package-lock.json
+      - name: Install stable baseline
+        run: npm ci
+      - name: Install pinned Next preview dependencies
+        run: npm ci --prefix next-app --no-audit --no-fund
+      - name: Build Next App Router without unresolved imports
+        run: |
+          set -o pipefail
+          npm run build --prefix next-app 2>&1 | tee next-build.log
+          if grep -F "Module not found: Can't resolve" next-build.log; then
+            exit 1
+          fi
+      - name: Validate Next TypeScript
+        run: npm run typecheck --prefix next-app
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Verify native routes, compatibility and browser workflow
+        run: npm run smoke --prefix next-app
+      - name: Verify account lifecycle and desktop pairing
+        run: node next-app/tests/auth.mjs

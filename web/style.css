@@ -1641,12 +1641,12 @@ summary {
   padding: 12px;
   margin-bottom: 12px;
 }
-.message.user {
+.message-user {
   background: #244e82;
   color: #fff;
   margin-left: 24px;
 }
-.message.error {
+.message-error {
   color: #b73d45;
 }
 .login {
