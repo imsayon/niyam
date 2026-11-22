@@ -585,6 +585,10 @@ export function importRows(data, body) {
       const existing = original[body.kind].find(matches);
       if (items.some((item) => matches(item.record)))
         fail("Duplicate row in this import.");
+      // Blank email cells in imported student directories must not remove an
+      // existing verified contact address or break roster-linked Google access.
+      if (body.kind === "students" && existing && !next.email)
+        next.email = existing.email;
       const record = { ...next, id: existing?.id || randomUUID() };
       validate(data, body.kind, record);
       items.push({
