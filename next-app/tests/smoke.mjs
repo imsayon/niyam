@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { database as legacyDatabase, setup } from "../../server/store.js";
 import { seedDemo } from "../../scripts/seed.js";
 import { spawn } from "node:child_process";
+import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -86,10 +87,31 @@ try {
   });
   assert.equal(updated.status, 200, await updated.text().catch(() => ""));
   assert.equal((await (await fetch(base + "/api/institution", { headers: { Cookie: cookie } })).json()).shortName, "ITC");
-  // The session token minted by Next must remain readable by the original Express API.
-  const crossFramework = await fetch(base + "/api/workspace", { headers: { Cookie: cookie } });
-  assert.equal(crossFramework.status, 200, "Express must accept the Next session");
-  assert.ok((await crossFramework.json()).data.events.length > 0);
+  const roleScoped = await fetch(base + "/api/workspace", { headers: { Cookie: cookie } });
+  assert.equal(roleScoped.status, 200);
+  assert.ok((await roleScoped.json()).data.events.length > 0);
+  const crossFramework = await fetch(base + "/api/ai/status", { headers: { Cookie: cookie } });
+  assert.equal(crossFramework.status, 200, "Legacy API must accept the Next session");
+  assert.equal(typeof (await crossFramework.json()).enabled, "boolean");
+  const history = await fetch(base + "/api/ai/history", { headers: { Cookie: cookie } });
+  assert.equal(history.status, 200);
+  assert.deepEqual((await history.json()).messages, []);
+  const audit = await fetch(base + "/api/audit", { headers: { Cookie: cookie } });
+  assert.equal(audit.status, 200);
+  assert.ok((await audit.json()).some(row => row.action === "institution.updated"));
+  const studentLogin = await fetch(base + "/api/session", {
+    method: "POST", headers: { "Content-Type": "application/json", Origin: base },
+    body: JSON.stringify({ email: "student@niyam.example", password: passwords.student, role: "student" }),
+  });
+  assert.equal(studentLogin.status, 200);
+  const studentCookie = studentLogin.headers.get("set-cookie")?.split(";")[0];
+  assert.ok(studentCookie);
+  const studentWorkspace = await fetch(base + "/api/workspace", { headers: { Cookie: studentCookie } });
+  assert.equal(studentWorkspace.status, 200);
+  const personal = (await studentWorkspace.json()).data;
+  assert.ok(Array.isArray(personal.schedules));
+  assert.equal(personal.faculty, undefined, "Student must not read the full institutional workspace");
+  assert.equal((await fetch(base + "/api/audit", { headers: { Cookie: studentCookie } })).status, 403);
   const logout = await fetch(base + "/api/session", { method: "DELETE", headers: { Cookie: cookie, Origin: base } });
   assert.equal(logout.status, 200);
   assert.equal((await fetch(base + "/api/institution", { headers: { Cookie: cookie } })).status, 401);
@@ -98,7 +120,29 @@ try {
     assert.equal(res.status, 200, path);
     assert.match(await res.text(), /Niyam/, path);
   }
-  console.log("Next App Router/native health/release/local API rewrite/deep link smoke passed");
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.goto(base, { waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: "Welcome back." }).waitFor({ timeout: 15000 });
+    await page.getByRole("tab", { name: "Faculty" }).click();
+    await page.getByRole("tab", { name: "Admin" }).click();
+    await page.locator('input[name="password"]').fill(passwords.admin);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.locator(".app-shell").waitFor({ timeout: 15000 });
+    await page.getByRole("link", { name: "Examinations" }).click();
+    await page.getByText("Examinations", { exact: true }).last().waitFor();
+    const appearance = page.getByRole("button", { name: "Toggle appearance" }).last();
+    await appearance.click();
+    await appearance.click();
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await page.getByRole("heading", { name: "Welcome back." }).waitFor();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole("tab", { name: "Student" }).click();
+    await page.getByRole("tab", { name: "Admin" }).click();
+    await page.getByRole("heading", { name: "Welcome back." }).waitFor();
+  } finally { await browser.close(); }
+  console.log("Next App Router, PostgreSQL, native auth/role boundaries, legacy compatibility and browser smoke passed");
 } catch (err) {
   for (const child of children) console.error(child.logs().slice(-4000));
   throw err;

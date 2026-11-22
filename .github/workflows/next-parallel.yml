@@ -39,9 +39,16 @@ jobs:
         run: npm ci
       - name: Install Next preview dependencies
         run: npm install --prefix next-app --no-audit --no-fund
-      - name: Build Next App Router
-        run: npm run build --prefix next-app
+      - name: Build Next App Router without unresolved imports
+        run: |
+          set -o pipefail
+          npm run build --prefix next-app 2>&1 | tee next-build.log
+          if grep -F "Module not found: Can't resolve" next-build.log; then
+            exit 1
+          fi
       - name: Validate Next TypeScript
         run: npm run typecheck --prefix next-app
-      - name: Verify native routes and local API compatibility
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Verify native routes, compatibility and browser workflow
         run: npm run smoke --prefix next-app

@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 const legacyOrigin = process.env.NIYAM_LEGACY_API_ORIGIN;
 // Explicitly refuse remote/prod proxies while the old API is being replaced.
 if (legacyOrigin && !/^http:\/\/(localhost|127\.0\.0\.1):[0-9]{2,5}$/.test(legacyOrigin)) {
@@ -6,6 +7,7 @@ if (legacyOrigin && !/^http:\/\/(localhost|127\.0\.0\.1):[0-9]{2,5}$/.test(legac
 }
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  outputFileTracingRoot: path.resolve(process.cwd(), ".."),
   async rewrites() {
     return {
       beforeFiles: [],
